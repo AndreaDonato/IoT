@@ -10,9 +10,17 @@ typedef struct {
     double gamma;                 // sconto (default 0.95)
 } MDPParams;
 
-// Dimensione spazio di stato
+// Calcola la dimensione dello spazio di stato
 int mdp_num_states(const MDPParams *p);
 
-// Encoding/decoding stato <-> indice compatto [0..S-1]
+// Encoding/decoding dello stato in/da un indice compatto [0..S-1]
 int mdp_encode(const MDPParams *p, State s);
 State mdp_decode(const MDPParams *p, int idx);
+
+// Reward della transizione verso uno stato successivo s' (dipende solo da N' = n1'+n2')
+int mdp_reward(const MDPParams *p, State sp);
+
+// Elenca le possibile transizioni da (s, a) con probabilità uniformi (24 esiti: 6×4) e ritorna il numero di next states riempiti in out_idx[], out_p[].
+int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]);
+
+
