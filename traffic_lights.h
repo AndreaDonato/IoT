@@ -18,8 +18,8 @@ int mdp_num_states(const MDPParams *p);
 
 // Encoding/decoding dello stato in/da un indice compatto [0..S-1]
 // Evita inefficienze di codice come cicli annidati
-int mdp_encode(const MDPParams *p, State s);
-State mdp_decode(const MDPParams *p, int idx);
+int state_encode(const MDPParams *p, State s);
+State state_decode(const MDPParams *p, int idx);
 
 
 // Reward della transizione verso uno stato successivo s' (dipende solo da N' = n1'+n2')
@@ -28,3 +28,9 @@ int mdp_reward(const MDPParams *p, State sp);
 
 // Elenca le possibile transizioni da (s, a) con probabilità uniformi (24 esiti: 6×4) e ritorna il numero di next states riempiti in out_idx[], out_p[].
 int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]);
+
+// Value Iteration: calcola V e policy ottima (0 => set TL1 verde; 1 => set TL2 verde). max_iter e tol governano lo stop; ritorna iterazioni eseguite.
+int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy);
+
+// Simulazione seguendo la policy per T passi; ritorna reward cumulato.
+int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state);
