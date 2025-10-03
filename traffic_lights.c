@@ -71,8 +71,9 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
         V[i]=0.0;                                                           // inizializza V
         policy[i]=0;                                                        // inizializza policy                        
     }
-    int trans_idx[32];                                                      // Lista degli stati successivi possibili (encoded). 6*4=24 al default, ma allochiamo 32 per sicurezza.
-    double trans_p[32];                                                     // Lista delle probabilità associate agli stati successivi possibili. 
+    int reachable_states=(p->add_r1_max+1)*(p->add_r2_max+1);               // numero di stati raggiungibili da uno stato qualsiasi (per default 6*4=24)
+    int *trans_idx=malloc(reachable_states*sizeof(int));                    // Lista degli stati successivi possibili (encoded).
+    double *trans_p=malloc(reachable_states*sizeof(double));                // Lista delle probabilità associate agli stati successivi possibili. 
     int it=0;                                                               // contatore delle iterazioni
     for(; it<max_iter; ++it){                                               // ripete gli Update di Bellman finché non converge
         double delta=0.0;                                                   // massima variazione in questa iterazione
@@ -80,11 +81,11 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
             double best = -1e100;                                           // valore migliore trovato
             unsigned char best_a=0;                                         // azione che produce il valore migliore
             for(int a=0; a<2; a++){                                         // Loop per ciascuna delle due azioni possibili
-                State scur = state_decode(p, s);                              // decodifica lo stato corrente
+                State scur = state_decode(p, s);                            // decodifica lo stato corrente
                 int n = mdp_transitions(p, scur, a, trans_idx, trans_p);    // calcola gli stati successivi e le loro probabilità. n è il numero di stati successivi calcolati
                 double q=0.0;                                               // valore atteso per azione a nello stato s
                 for(int t=0; t<n; t++){                                     // cicla su tutti gli stati successivi possibili
-                    State sp = state_decode(p, trans_idx[t]);                 // decodifica lo stato successivo
+                    State sp = state_decode(p, trans_idx[t]);               // decodifica lo stato successivo
                     int r = mdp_reward(p, sp);                              // calcola il reward per lo stato successivo
                     q += trans_p[t] * (r + p->gamma * V[ trans_idx[t] ]);   // somma il contributo di questo stato successivo al valore atteso
                 }
@@ -101,13 +102,14 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
         }
         if(delta<tol) break;                                                // se la massima variazione è sotto la soglia, esci dal ciclo
     }   
+    free(trans_p); free(trans_idx);
     return it;                                                              // ritorna il numero di iterazioni eseguite
 }
 
-int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state, int *TotAuto){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
-    int R=0;
-    int snapshot=0;                                  // reward cumulato
-    for(int t=1; t<steps+1; t++){                                             // cicla per ciascun passo di simulazione
+int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAuto, int *snaphotReward){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
+    int R=0;                                                                // reward cumulato
+    int ctr=0;                                                              // counter per snapshots
+    for(int t=1; t<steps+1; t++){                                           // cicla per ciascun passo di simulazione
         int idx = state_encode(p,s);                                        // codifica lo stato corrente in un indice
         int a = policy[idx];                                                // seleziona l'azione secondo la policy
         unsigned int r1 = xorshift32(rng_state);                            // genera due numeri pseudocasuali per calcolare le nuove auto che arrivano
@@ -127,11 +129,12 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
             sp.g1 = 0;                                                      // segna nello stato l'informazione TL2 verde per il prossimo passo
         }
         R += mdp_reward(p, sp);                                             // calcola il reward per lo stato successivo e lo aggiunge al cumulato
-        s = sp; 
-        if(steps%t==0){
-            TotAuto[snapshot]=s.n1 + s.n2;
-            snapshot++;
-        }                                           // passa allo stato successivo
+        s = sp;                                                             // passa allo stato successivo
+        if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi  
+            snapshotAuto[ctr]=s.n1 + s.n2;                                  // salva il numero totale di auto in questo snapshot
+            snaphotReward[ctr]=R;                                           // salva il reward cumulato in questo snapshot
+            ctr++;
+        }                                          
     }
     printf("Totale auto residue: %d\n", s.n1 + s.n2);
     return R;                                                               // ritorna il reward cumulato

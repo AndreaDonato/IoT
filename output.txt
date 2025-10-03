@@ -1,0 +1,21 @@
+max_r1: 41, max:r2: 26, add_r1_max: 6, add_r2_max: 6, out_r1_max: 6, out_r2_max: 5, low_th: 16, med_th: 31, gamma: 0.95, steps: 100000, seed: 123456, simulations: 10, iterations: 123, tot_states: 2268
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-7942
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-7946
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-8313
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-8260
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-8203
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-8214
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-7651
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-6551
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-8125
+
+Simulazione da s0=(0,0,TL1G) per 100000 step: reward cumulato=-8561

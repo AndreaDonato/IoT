@@ -34,4 +34,4 @@ int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], doub
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy);
 
 // Simulazione seguendo la policy per T passi; ritorna reward cumulato.
-int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state, int *TotAuto);
+int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAuto, int *snaphotReward);
