@@ -6,6 +6,7 @@ typedef struct { int n1, n2, g1; } State;
 typedef struct {
     int max_r1, max_r2;           // cap strade (default 40,25)
     int add_r1_max, add_r2_max;   // nuove auto massime (default 5,3)
+    int out_r1_max, out_r2_max;   // auto che passano se verde (default 3,2)
     int low_th, med_th;           // soglie N: low<N<med, high>=med (default 15,30)
     double gamma;                 // sconto (default 0.95)
 } MDPParams;
@@ -33,4 +34,4 @@ int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], doub
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy);
 
 // Simulazione seguendo la policy per T passi; ritorna reward cumulato.
-int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state);
+int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state, int *TotAuto);

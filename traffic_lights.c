@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include "traffic_lights.h"
 
 static inline int clamp(int x, int a, int b){ return x<a?a: (x>b?b:x); }    // assicura che x sia in [a,b]
@@ -46,12 +47,12 @@ int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], doub
         for(int j=0; j<=p->add_r2_max; j++){
             State sp;
             if(action==0){
-                int pass = s.n1<3? s.n1:3;                                  // massimo 3 auto passano se TL1 è verde
+                int pass = s.n1<p->out_r1_max? s.n1:p->out_r1_max;                                  // massimo 3 auto passano se TL1 è verde
                 sp.n1 = clamp(s.n1 - pass + i, 0, p->max_r1);
                 sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
                 sp.g1 = 1;                                                  // segna nello stato l'informazione TL1 verde
             }else{
-                int pass = s.n2<2? s.n2:2;                                  // massimo 2 auto passano se TL2 è verde
+                int pass = s.n2<p->out_r2_max? s.n2:p->out_r2_max;                                  // massimo 2 auto passano se TL2 è verde
                 sp.n1 = clamp(s.n1 + i, 0, p->max_r1);
                 sp.n2 = clamp(s.n2 - pass + j, 0, p->max_r2);
                 sp.g1 = 0;                                                  // segna nello stato l'informazione TL2 verde
@@ -103,10 +104,11 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
     return it;                                                              // ritorna il numero di iterazioni eseguite
 }
 
-int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
-    int R=0;                                                                // reward cumulato
-    for(int t=0; t<steps; t++){                                             // cicla per ciascun passo di simulazione
-        int idx = state_encode(p,s);                                          // codifica lo stato corrente in un indice
+int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state, int *TotAuto){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
+    int R=0;
+    int snapshot=0;                                  // reward cumulato
+    for(int t=1; t<steps+1; t++){                                             // cicla per ciascun passo di simulazione
+        int idx = state_encode(p,s);                                        // codifica lo stato corrente in un indice
         int a = policy[idx];                                                // seleziona l'azione secondo la policy
         unsigned int r1 = xorshift32(rng_state);                            // genera due numeri pseudocasuali per calcolare le nuove auto che arrivano
         unsigned int r2 = xorshift32(rng_state);                           
@@ -114,18 +116,24 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
         int j = (int)(r2 % (p->add_r2_max+1));                              // nuove auto che arrivano su r2
         State sp;                                                           // stato successivo
         if(a==0){
-            int pass = s.n1<3? s.n1:3;                                      // massimo 3 auto passano se TL1 è verde (equivale a min(s.n1, 3))
+            int pass = s.n1<p->out_r1_max? s.n1:p->out_r1_max;              // massimo 3 auto passano se TL1 è verde (equivale a min(s.n1, 3))
             sp.n1 = clamp(s.n1 - pass + i, 0, p->max_r1);
             sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
             sp.g1 = 1;                                                      // segna nello stato l'informazione TL1 verde per il prossimo passo
         }else{
-            int pass = s.n2<2? s.n2:2;                                      // massimo 2 auto passano se TL2 è verde (equivale a min(s.n2, 2))
+            int pass = s.n2<p->out_r2_max? s.n2:p->out_r2_max;               // massimo 2 auto passano se TL2 è verde (equivale a min(s.n2, 2))
             sp.n1 = clamp(s.n1 + i, 0, p->max_r1);
             sp.n2 = clamp(s.n2 - pass + j, 0, p->max_r2);
             sp.g1 = 0;                                                      // segna nello stato l'informazione TL2 verde per il prossimo passo
         }
         R += mdp_reward(p, sp);                                             // calcola il reward per lo stato successivo e lo aggiunge al cumulato
-        s = sp;                                                             // passa allo stato successivo
+        s = sp; 
+        if(steps%t==0){
+            TotAuto[snapshot]=s.n1 + s.n2;
+            snapshot++;
+        }                                           // passa allo stato successivo
     }
+    printf("Totale auto residue: %d\n", s.n1 + s.n2);
     return R;                                                               // ritorna il reward cumulato
 }
+
