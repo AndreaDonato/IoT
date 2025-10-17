@@ -10,22 +10,21 @@ static void usage(const char* prog){
 
 int main(int argc, char const *argv[])
 {
-
-	// Inizializzazione dei parametri
-	MDPParams P = {
+    // Inizializzazione dei parametri MDP
+    MDPParams P = {
         .max_r1=40, .max_r2=25,
         .add_r1_max=5, .add_r2_max=3,
         .out_r1_max=3, .out_r2_max=2,
         .low_th=15, .med_th=30,
         .gamma=0.95
     };
-	int steps=1000000;							                                // numero di passi di simulazione
-    unsigned int seed=12345;                                                    // seed per il generatore di numeri pseudocasuali
-    int simulations=10;				                                            // seed per il generatore di numeri pseudocasuali
+    int steps=1000;                     // numero di passi di simulazione
+    unsigned int seed=12345;            // seed per il generatore di numeri pseudocasuali
+    int simulations=10;                 // numero di simulazioni per valutare la policy
 
     FILE *foutN = fopen("outputN.txt", "w");
     FILE *foutR = fopen("outputR.txt", "w");
-    FILE *fout = fopen("output.txt", "w");
+    FILE *fout  = fopen("output.txt",  "w");
 
     // Leggi i parametri da linea di comando
     if(argc>=3){ P.max_r1=atoi(argv[1]); P.max_r2=atoi(argv[2]); }
@@ -37,35 +36,65 @@ int main(int argc, char const *argv[])
     if(argc>=12){ seed=(unsigned int)strtoul(argv[11],NULL,10); }
     if(argc>=13){ simulations=atoi(argv[12]); }
     if(argc==2){ usage(argv[0]); return 1; }
-   
 
-    int S = mdp_num_states(&P);                                             // numero di stati
-    double *V = (double*)calloc(S, sizeof(double));                         // valore di ogni stato inizializzato a 0
-    unsigned char *Pi = (unsigned char*)malloc(S);                          // policy ottima (0 => TL1 verde; 1 => TL2 verde)
-    int it = mdp_value_iteration(&P, 1000, 1e-6, V, Pi);                    // calcola il valore di ciascuno stato e la relativa policy ottima con Value Iteration
+    // VALUE ITERATION 
+
+    int S = mdp_num_states(&P);                                         // numero di stati                      
+    double *V = (double*)calloc(S, sizeof(double));                     // valore di ogni stato inizializzato a 0
+    unsigned char *Pi_VI = (unsigned char*)malloc(S);                   // policy ottima (0 => TL1 verde; 1 => TL2 verde)
+    int it = mdp_value_iteration(&P, 1000, 1e-6, V, Pi_VI);             // calcola il valore di ciascuno stato e la relativa policy ottima con Value Iteration
     printf("Value Iteration: %d iterazioni, S=%d stati\n", it, S);
-    fprintf(fout, "max_r1: %d, max:r2: %d, add_r1_max: %d, add_r2_max: %d, out_r1_max: %d, out_r2_max: %d, low_th: %d, med_th: %d, gamma: %.2f, steps: %d, seed: %u, simulations: %d, iterations: %d, tot_states: %d\n", P.max_r1, P.max_r2, P.add_r1_max, P.add_r2_max, P.out_r1_max, P.out_r2_max, P.low_th, P.med_th, P.gamma, steps, seed, simulations, it, S);
-    
-    int *N=(int*)calloc(100, sizeof(int));                                  // array per salvare il numero totale di auto in ciascuno snapshot (100 snapshot totali)
-    int *R=(int*)calloc(100, sizeof(int));
+    fprintf(fout, "Parametri: max_r1=%d, max_r2=%d, add_r1_max=%d, add_r2_max=%d, out_r1_max=%d, out_r2_max=%d, low_th=%d, med_th=%d, gamma=%.2f, steps=%d, seed=%u, simulations=%d, iterations=%d, tot_states=%d\n", P.max_r1, P.max_r2, P.add_r1_max, P.add_r2_max, P.out_r1_max, P.out_r2_max, P.low_th, P.med_th, P.gamma, steps, seed, simulations, it, S);
 
-    State s0 = (State){ .n1=0, .n2=0, .g1=1 };                              // stato iniziale di simulazione (strade vuote, TL1 verde)
+    // Q-LEARNING
+
+    // Iperparametri base (puoi cambiare liberamente):
+    int episodes      = 10000;    // numero di episodi di training
+    int steps_per_ep  = 1000;     // passi per episodio (orizzonte "troncato")
+    double alpha      = 0.1;      // learning rate
+    double eps_start  = 0.20;     // esplorazione iniziale
+    double eps_end    = 0.02;     // esplorazione minima
+    double eps_decay  = 0.995;    // decadimento per episodio
+
+    double *Q = (double*)calloc(S*2, sizeof(double));                    // Q-table (S stati, 2 azioni)
+    unsigned char *Pi_ql = (unsigned char*)malloc(S);                    // policy greedy da Q-learning
+    double avg_ret = mdp_q_learning(&P, episodes, steps_per_ep, 987654u, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql); // allena e produce policy greedy
+    printf("Q-learning: episodes=%d, steps/ep=%d, alpha=%.3f, eps=%.2f->%.2f (x%.3f), avg_return~%.2f\n", episodes, steps_per_ep, alpha, eps_start, eps_end, eps_decay, avg_ret);
+    fprintf(fout, "Q-learning: episodes=%d, steps_per_ep=%d, alpha=%.3f, eps_start=%.2f, eps_end=%.2f, eps_decay=%.3f, avg_return~%.2f\n", episodes, steps_per_ep, alpha, eps_start, eps_end, eps_decay, avg_ret);
+
+    // Valutazione/Confronto in simulazione
+    int *N=(int*)calloc(100, sizeof(int));          // array per snapshot numero auto
+    int *R=(int*)calloc(100, sizeof(int));          // array per snapshot reward cumulato
+
+    State s0 = (State){ .n1=0, .n2=0, .g1=1 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
     // State s0 = (State){ .n1=P.max_r1/2, .n2=P.max_r2/2, .g1=1 };         // stato iniziale di simulazione (metà capacità su entrambe le strade, TL1 verde)
-    for(int i=0; i<simulations; i++){
-        unsigned int s=seed+i;                                              // copia il seed per non modificare l'originale
-        int Rmax = mdp_simulate(&P, s0, Pi, steps, &s, N, R);
-        printf("Numero totale di macchine per snapshot: ");                 // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy calcolat
-        for(int j=0; j<100; j++){                                           // stampa il numero totale di auto in ciascuno snapshot
-            printf("%d, ", N[j]); 
-            fprintf(foutN, "%d, ", N[j]);
-            fprintf(foutR, "%d, ", R[j]);
-        }
-        fprintf(foutN, "\n");
-        fprintf(foutR, "\n");                      
-        printf("\nSimulazione da s0=(%d,%d,%s) per %d step: reward cumulato=%d\n", s0.n1, s0.n2, s0.g1?"TL1G":"TL2G", steps, Rmax);
-        fprintf(fout, "\nSimulazione da s0=(%d,%d,%s) per %d step: reward cumulato=%d\n", s0.n1, s0.n2, s0.g1?"TL1G":"TL2G", steps, Rmax);
-    }
-    free(V); free(Pi); free(N); free(R);                                           // libera la memoria dinamica
 
-	return 0;
+    // 1) Simula policy da Value Iteration (baseline)
+    for(int i=0; i<simulations; i++){
+        unsigned int s=seed+i;                      // copia il seed per non modificare l'originale
+        int Rmax = mdp_simulate(&P, s0, Pi_VI, steps, &s, N, R);
+        printf("[VI] Reward cumulato=%d\n", Rmax);
+        for(int j=0;j<100;j++){ fprintf(foutN, "%d, ", N[j]); fprintf(foutR, "%d, ", R[j]); }
+        fprintf(foutN, "\n"); fprintf(foutR, "\n");
+        fprintf(fout, "[VI] s0=(%d,%d,%s), steps=%d, reward=%d\n", s0.n1, s0.n2, s0.g1?"TL1G":"TL2G", steps, Rmax);
+    }
+
+    // 2) Simula policy appresa con Q-learning
+    for(int i=0; i<simulations; i++){
+        unsigned int s=seed+1000+i;
+        int Rmax = mdp_simulate(&P, s0, Pi_ql, steps, &s, N, R);
+        printf("[QL] Reward cumulato=%d\n", Rmax);      
+        for(int j=0; j<100; j++){                   // stampa il numero totale di auto in ciascuno snapshot
+            fprintf(foutN, "%d, ", N[j]); 
+            fprintf(foutR, "%d, ", R[j]); 
+        }
+        fprintf(foutN, "\n"); fprintf(foutR, "\n");
+        fprintf(fout, "[QL] s0=(%d,%d,%s), steps=%d, reward=%d\n", s0.n1, s0.n2, s0.g1?"TL1G":"TL2G", steps, Rmax);
+    }
+
+    free(V); free(Pi_VI);
+    free(Q); free(Pi_ql);
+    free(N); free(R);
+
+    return 0;
 }

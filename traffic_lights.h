@@ -11,24 +11,41 @@ typedef struct {
     double gamma;                 // sconto (default 0.95)
 } MDPParams;
 
+// --- AGGIUNTA: prototipi Q-learning ---
+
+// Allena una Q-table con Q-learning a orizzonte infinito scontato.
+// Q ha dimensione mdp_num_states(p)*2 (due azioni).
+// Restituisce il reward medio per episodio.
+double mdp_q_learning(const MDPParams *p,
+                      int episodes,          // numero di episodi
+                      int steps_per_ep,      // passi per episodio
+                      unsigned int seed,     // seed RNG
+                      double alpha,          // learning rate
+                      double eps_start,      // epsilon iniziale (ε-greedy)
+                      double eps_end,        // epsilon finale
+                      double eps_decay,      // moltiplicatore per eps a fine episodio (e.g. 0.995)
+                      double *Q,             // out: tabella Q (S*2)
+                      unsigned char *policy  // out: policy greedy da Q (S)
+                      );
+
+// Estrae la policy greedy dalla Q-table.
+void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *policy);
 
 // Calcola la dimensione dello spazio di stato
 // Al variare del numero di parametri cambia il numero di stati della CdM
 int mdp_num_states(const MDPParams *p);
-
 
 // Encoding/decoding dello stato in/da un indice compatto [0..S-1]
 // Evita inefficienze di codice come cicli annidati
 int state_encode(const MDPParams *p, State s);
 State state_decode(const MDPParams *p, int idx);
 
-
 // Reward della transizione verso uno stato successivo s' (dipende solo da N' = n1'+n2')
 int mdp_reward(const MDPParams *p, State sp);
 
-
 // Elenca le possibile transizioni da (s, a) con probabilità uniformi (24 esiti: 6×4) e ritorna il numero di next states riempiti in out_idx[], out_p[].
 int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]);
+
 
 // Value Iteration: calcola V e policy ottima (0 => set TL1 verde; 1 => set TL2 verde). max_iter e tol governano lo stop; ritorna iterazioni eseguite.
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy);

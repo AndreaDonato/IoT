@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h> 
 #include "traffic_lights.h"
 
 static inline int clamp(int x, int a, int b){ return x<a?a: (x>b?b:x); }    // assicura che x sia in [a,b]
@@ -40,6 +41,7 @@ static inline unsigned int xorshift32(unsigned int *st){                    // g
     return *st=x;
 }
 
+
 int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]){    // costruisce l'elenco di tutti gli stati successivi possibili e la loro probabilità a partire dallo stato s e dall'azione action. Più efficiente di costruire l'intera matrice di transizione.
     // action: 0 => TL1 green; 1 => TL2 green
     int k=0;
@@ -64,6 +66,7 @@ int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], doub
     }
     return k;   // ritorna il numero di stati successivi calcolati
 }
+
 
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy){    // calcola il valore atteso della ricompensa (V) e la policy ottima per ciascuno stato. Ritorna il numero di iterazioni eseguite. Il parametro max_iter indica il numero massimo di iterazioni mentre tol la soglia di convergenza; entrambi governano lo stop. 
     int S = mdp_num_states(p);                                              // numero di stati
@@ -136,7 +139,97 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
             ctr++;
         }                                          
     }
-    printf("Totale auto residue: %d\n", s.n1 + s.n2);
+    printf("Totale auto residue: %d\n", s.n1 + s.n2);                       // stampa il numero totale di auto residue alla fine della simulazione
     return R;                                                               // ritorna il reward cumulato
+}
+
+// implementazione Q-learning
+
+static inline int mdp_sample_arrivals(unsigned int *rng_state, int max_add){    // Ritorna i in {0..max_add} uniforme
+    unsigned int r = xorshift32(rng_state);     
+    return (int)(r % (max_add+1));      
+}
+
+static inline void mdp_env_step(const MDPParams *p, State s, int action, unsigned int *rng_state, State *sp_out, int *r_out){   // Una singola transizione ambiente per Q-learning: campiona arrivi, applica azione, calcola reward.
+    int i = mdp_sample_arrivals(rng_state, p->add_r1_max);
+    int j = mdp_sample_arrivals(rng_state, p->add_r2_max);
+
+    State sp;
+    if(action==0){
+        int pass = s.n1 < p->out_r1_max ? s.n1 : p->out_r1_max;  // TL1 verde
+        sp.n1 = clamp(s.n1 - pass + i, 0, p->max_r1);
+        sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
+        sp.g1 = 1;
+    }else{
+        int pass = s.n2 < p->out_r2_max ? s.n2 : p->out_r2_max;  // TL2 verde
+        sp.n1 = clamp(s.n1 + i, 0, p->max_r1);
+        sp.n2 = clamp(s.n2 - pass + j, 0, p->max_r2);
+        sp.g1 = 0;
+    }
+
+    *r_out = mdp_reward(p, sp);
+    *sp_out = sp;
+}
+
+static inline int argmax2(double q0, double q1){    // tie-breaking deterministico: preferisce azione 0 in caso di parità
+    return (q1 > q0) ? 1 : 0;                       // ritorna l'indice dell'argomento massimo
+}
+
+void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *policy){  // Estrae la policy greedy dalla Q-table.
+    int S = mdp_num_states(p);
+    for(int s=0; s<S; ++s){
+        int a = argmax2(Q[s*2+0], Q[s*2+1]);
+        policy[s] = (unsigned char)a;
+    }
+}
+
+double mdp_q_learning(const MDPParams *p, int episodes, int steps_per_ep, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned char *policy){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
+    int S = mdp_num_states(p);
+    for(int i=0; i<S*2; ++i) Q[i] = 0.0;            // Inizializza Q a zero
+    unsigned int rng = seed;                        // RNG locale
+    double eps = eps_start;
+    double last_avg_return = 0.0;
+
+    for(int ep=0; ep<episodes; ++ep){
+        State s = (State){ .n1=0, .n2=0, .g1=1 };   // Stato iniziale
+        int G = 0;                                  // ritorno cumulato dell'episodio (somma reward)
+        for(int t=0; t<steps_per_ep; ++t){
+            int s_idx = state_encode(p, s);
+            // ε-greedy: con prob ε scegli azione random, altrimenti greedy su Q
+            int a;
+            if(((double)(xorshift32(&rng)) / (double)UINT32_MAX) < eps){
+                a = (xorshift32(&rng) & 1u) ? 1 : 0; // random tra {0,1}
+            }else{
+                a = argmax2(Q[s_idx*2+0], Q[s_idx*2+1]);
+            }
+
+            // Ambiente: una transizione campionata
+            State sp; int r;
+            mdp_env_step(p, s, a, &rng, &sp, &r);
+            int sp_idx = state_encode(p, sp);
+
+            // Target di Q-learning: r + gamma * max_a' Q(sp,a')
+            double maxQsp = (Q[sp_idx*2+0] > Q[sp_idx*2+1]) ? Q[sp_idx*2+0] : Q[sp_idx*2+1];
+            double *Qsa = &Q[s_idx*2 + a];
+            *Qsa = *Qsa + alpha * (r + p->gamma * maxQsp - *Qsa);
+            G += r;
+            s = sp;
+        }
+
+        // Aggiorna epsilon (decadimento moltiplicativo) e clamp tra [eps_end, eps_start]
+        eps = eps * eps_decay;
+        if(eps < eps_end) eps = eps_end;
+        if(eps > eps_start) eps = eps_start;
+
+        last_avg_return = 0.9*last_avg_return + 0.1*(double)G;        // Semplice media mobile del ritorno per log/diagnostica
+        if ((ep + 1) % 100 == 0) {
+            printf("[QL][train] ep=%d/%d  eps=%.3f  return=%d  avg=%.2f\n",
+                   ep + 1, episodes, eps, G, last_avg_return);
+        }
+    }
+    
+    mdp_policy_from_Q(p, Q, policy);    // Estrai la policy greedy finale
+
+    return last_avg_return;
 }
 
