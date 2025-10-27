@@ -41,7 +41,6 @@ static inline unsigned int xorshift32(unsigned int *st){                    // g
     return *st=x;
 }
 
-
 int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]){    // costruisce l'elenco di tutti gli stati successivi possibili e la loro probabilità a partire dallo stato s e dall'azione action. Più efficiente di costruire l'intera matrice di transizione.
     // action: 0 => TL1 green; 1 => TL2 green
     int k=0;
@@ -66,7 +65,6 @@ int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], doub
     }
     return k;   // ritorna il numero di stati successivi calcolati
 }
-
 
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy){    // calcola il valore atteso della ricompensa (V) e la policy ottima per ciascuno stato. Ritorna il numero di iterazioni eseguite. Il parametro max_iter indica il numero massimo di iterazioni mentre tol la soglia di convergenza; entrambi governano lo stop. 
     int S = mdp_num_states(p);                                              // numero di stati
@@ -109,7 +107,7 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
     return it;                                                              // ritorna il numero di iterazioni eseguite
 }
 
-int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAuto, int *snaphotReward){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
+int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
     int R=0;                                                                // reward cumulato
     int ctr=0;                                                              // counter per snapshots
     for(int t=1; t<steps+1; t++){                                           // cicla per ciascun passo di simulazione
@@ -134,8 +132,10 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
         R += mdp_reward(p, sp);                                             // calcola il reward per lo stato successivo e lo aggiunge al cumulato
         s = sp;                                                             // passa allo stato successivo
         if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi  
-            snapshotAuto[ctr]=s.n1 + s.n2;                                  // salva il numero totale di auto in questo snapshot
-            snaphotReward[ctr]=R;                                           // salva il reward cumulato in questo snapshot
+            snapshotAutoN1[ctr]+=s.n1;                                       // salva il numero totale di auto in questo snapshot
+            snapshotAutoN2[ctr]+=s.n2;                                       // salva il numero totale di auto in questo snapshot
+            snaphotReward[ctr]+=R;                                           // salva il reward cumulato in questo snapshot
+            snapshopTime[ctr]=t;                                            // salva il tempo (passi) in questo snapshot
             ctr++;
         }                                          
     }
@@ -167,8 +167,8 @@ static inline void mdp_env_step(const MDPParams *p, State s, int action, unsigne
         sp.g1 = 0;
     }
 
-    *r_out = mdp_reward(p, sp);
-    *sp_out = sp;
+    *r_out = mdp_reward(p, sp);     // calcola il reward
+    *sp_out = sp;             // output stato successivo
 }
 
 static inline int argmax2(double q0, double q1){    // tie-breaking deterministico: preferisce azione 0 in caso di parità
@@ -183,52 +183,54 @@ void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *polic
     }
 }
 
-double mdp_q_learning(const MDPParams *p, int episodes, int steps_per_ep, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned char *policy){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
+double mdp_q_learning(const MDPParams *p, State s, int multiSim, int steps, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned char *policy, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
+   
+    FILE *fout  = fopen("QLoutput.txt",  "w");
+    
     int S = mdp_num_states(p);
     for(int i=0; i<S*2; ++i) Q[i] = 0.0;            // Inizializza Q a zero
     unsigned int rng = seed;                        // RNG locale
     double eps = eps_start;
     double last_avg_return = 0.0;
-
-    for(int ep=0; ep<episodes; ++ep){
-        State s = (State){ .n1=0, .n2=0, .g1=1 };   // Stato iniziale
-        int G = 0;                                  // ritorno cumulato dell'episodio (somma reward)
-        for(int t=0; t<steps_per_ep; ++t){
-            int s_idx = state_encode(p, s);
-            // ε-greedy: con prob ε scegli azione random, altrimenti greedy su Q
-            int a;
-            if(((double)(xorshift32(&rng)) / (double)UINT32_MAX) < eps){
-                a = (xorshift32(&rng) & 1u) ? 1 : 0; // random tra {0,1}
-            }else{
-                a = argmax2(Q[s_idx*2+0], Q[s_idx*2+1]);
-            }
-
-            // Ambiente: una transizione campionata
-            State sp; int r;
-            mdp_env_step(p, s, a, &rng, &sp, &r);
-            int sp_idx = state_encode(p, sp);
-
-            // Target di Q-learning: r + gamma * max_a' Q(sp,a')
-            double maxQsp = (Q[sp_idx*2+0] > Q[sp_idx*2+1]) ? Q[sp_idx*2+0] : Q[sp_idx*2+1];
-            double *Qsa = &Q[s_idx*2 + a];
-            *Qsa = *Qsa + alpha * (r + p->gamma * maxQsp - *Qsa);
-            G += r;
-            s = sp;
+    int ctr=0;                                      // counter per snapshots
+    int G = 0;                                  // ritorno cumulato dell'episodio (somma reward)
+    for(int t=0; t<steps; ++t){
+        int s_idx = state_encode(p, s);
+        // ε-greedy: con prob ε scegli azione random, altrimenti greedy su Q
+        int a;
+        if(((double)(xorshift32(&rng)) / (double)UINT32_MAX) < eps){
+            a = (xorshift32(&rng) & 1u) ? 1 : 0; // random tra {0,1}
+        }else{
+            a = argmax2(Q[s_idx*2+0], Q[s_idx*2+1]);
         }
-
+        // Ambiente: una transizione campionata
+        State sp; int r;
+        mdp_env_step(p, s, a, &rng, &sp, &r);
+        int sp_idx = state_encode(p, sp);
+        // Target di Q-learning: r + gamma * max_a' Q(sp,a')
+        double maxQsp = (Q[sp_idx*2+0] > Q[sp_idx*2+1]) ? Q[sp_idx*2+0] : Q[sp_idx*2+1];
+        double *Qsa = &Q[s_idx*2 + a];
+        *Qsa = *Qsa + alpha * (r + p->gamma * maxQsp - *Qsa);
+        G += r;
+        s = sp;
         // Aggiorna epsilon (decadimento moltiplicativo) e clamp tra [eps_end, eps_start]
-        eps = eps * eps_decay;
+        double k=10;
+        eps = k/(k+(t+1));
         if(eps < eps_end) eps = eps_end;
         if(eps > eps_start) eps = eps_start;
-
         last_avg_return = 0.9*last_avg_return + 0.1*(double)G;        // Semplice media mobile del ritorno per log/diagnostica
-        if ((ep + 1) % 100 == 0) {
-            printf("[QL][train] ep=%d/%d  eps=%.3f  return=%d  avg=%.2f\n",
-                   ep + 1, episodes, eps, G, last_avg_return);
+        if ((t) % 100 == 0 && multiSim==0) {
+            printf("[QL][train] ep=%d/%d  eps=%.3f  return=%d  avg=%.2f\n", t + 1, steps, eps, G, last_avg_return);
+            fprintf(fout, "%d %d %d %d\n",t , s.n1, s.n2, G);
         }
+        else if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi  
+        snapshotAutoN1[ctr]+=s.n1;                                       // salva il numero totale di auto in questo snapshot
+        snapshotAutoN2[ctr]+=s.n2;                                       // salva il numero totale di auto in questo snapshot
+        snaphotReward[ctr]+=G;                                           // salva il reward cumulato in questo snapshot
+        snapshopTime[ctr]=t;                                            // salva il tempo (passi) in questo snapshot
+        ctr++;
+        } 
     }
-    
-    mdp_policy_from_Q(p, Q, policy);    // Estrai la policy greedy finale
 
     return last_avg_return;
 }

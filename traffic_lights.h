@@ -1,7 +1,5 @@
-
 // Stato: n1 auto su r1, n2 su r2, g1=1 se TL1 verde (quindi TL2 rosso), 0 altrimenti.
 typedef struct { int n1, n2, g1; } State;
-
 
 typedef struct {
     int max_r1, max_r2;           // cap strade (default 40,25)
@@ -17,7 +15,8 @@ typedef struct {
 // Q ha dimensione mdp_num_states(p)*2 (due azioni).
 // Restituisce il reward medio per episodio.
 double mdp_q_learning(const MDPParams *p,
-                      int episodes,          // numero di episodi
+                      State s,
+                      int multiSim,          // flag per output dettagliato in training Q-learning
                       int steps_per_ep,      // passi per episodio
                       unsigned int seed,     // seed RNG
                       double alpha,          // learning rate
@@ -25,7 +24,8 @@ double mdp_q_learning(const MDPParams *p,
                       double eps_end,        // epsilon finale
                       double eps_decay,      // moltiplicatore per eps a fine episodio (e.g. 0.995)
                       double *Q,             // out: tabella Q (S*2)
-                      unsigned char *policy  // out: policy greedy da Q (S)
+                      unsigned char *policy,  // out: policy greedy da Q (S)
+                      int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime
                       );
 
 // Estrae la policy greedy dalla Q-table.
@@ -46,9 +46,8 @@ int mdp_reward(const MDPParams *p, State sp);
 // Elenca le possibile transizioni da (s, a) con probabilità uniformi (24 esiti: 6×4) e ritorna il numero di next states riempiti in out_idx[], out_p[].
 int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]);
 
-
 // Value Iteration: calcola V e policy ottima (0 => set TL1 verde; 1 => set TL2 verde). max_iter e tol governano lo stop; ritorna iterazioni eseguite.
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy);
 
 // Simulazione seguendo la policy per T passi; ritorna reward cumulato.
-int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAuto, int *snaphotReward);
+int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime);
