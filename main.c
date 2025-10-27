@@ -20,10 +20,8 @@ int main(int argc, char const *argv[])
         .gamma=0.95
     };
     int steps=1000000;                     // numero di passi di simulazione
-    unsigned int seed=12345;            // seed per il generatore di numeri pseudocasuali
+    unsigned int seed=123456;            // seed per il generatore di numeri pseudocasuali
     int simulations=10;                 // numero di simulazioni per valutare la policy
-
-    State state={ .n1=0, .n2=0, .g1=0 };  // stato iniziale
 
     FILE *foutVI  = fopen("outputVI.txt",  "w");
     FILE *foutQL  = fopen("outputQL.txt",  "w");
@@ -38,6 +36,8 @@ int main(int argc, char const *argv[])
     if(argc>=12){ seed=(unsigned int)strtoul(argv[11],NULL,10); }
     if(argc>=13){ simulations=atoi(argv[12]); }
     if(argc==2){ usage(argv[0]); return 1; }
+
+    State s0 = (State){ .n1=0, .n2=0, .g1=0 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
 
     // VALUE ITERATION 
 
@@ -69,9 +69,6 @@ int main(int argc, char const *argv[])
     int *R=(int*)calloc(100, sizeof(int));          // array per snapshot reward cumulato
     int *T=(int*)calloc(100, sizeof(int));          // array per snapshot tempo
 
-    State s0 = (State){ .n1=0, .n2=0, .g1=1 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
-    // State s0 = (State){ .n1=P.max_r1/2, .n2=P.max_r2/2, .g1=1 };         // stato iniziale di simulazione (metà capacità su entrambe le strade, TL1 verde)
-
     // 1) Simula policy da Value Iteration (baseline)
     for(int i=0; i<simulations; i++){
         unsigned int s=seed+i;                      // copia il seed per non modificare l'originale
@@ -89,7 +86,7 @@ int main(int argc, char const *argv[])
     // 2) Simula policy appresa con Q-learning
     for(int i=0; i<simulations; i++){
         unsigned int s=seed+1000+i;
-        int Rmax = mdp_q_learning(&P, state, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T);
+        int Rmax = mdp_q_learning(&P, s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T);
         printf("[QL] Reward cumulato=%d\n", Rmax);      
     }
     for(int j=0;j<100;j++){ 

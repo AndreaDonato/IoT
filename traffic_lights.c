@@ -93,6 +93,9 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
                 if(q>best){ 
                     best=q;                                                 // aggiorna il valore migliore trovato
                     best_a=(unsigned char)a;                                // aggiorna l'azione che produce il valore migliore
+                } else if (q == best) {
+                    /* tie-break: prefer the action that gives green to the longer queue */
+                    best_a = (scur.n1 >= scur.n2) ? 0 : 1;
                 }
             }
             double old = V[s];                                              // salva il vecchio valore per calcolare la variazione
@@ -170,14 +173,20 @@ static inline void mdp_env_step(const MDPParams *p, State s, int action, unsigne
     *sp_out = sp;             // output stato successivo
 }
 
-static inline int argmax2(double q0, double q1){    // tie-breaking deterministico: preferisce azione 0 in caso di parità
-    return (q1 > q0) ? 1 : 0;                       // ritorna l'indice dell'argomento massimo
+// tie-breaking: preferisce l'azione che dà verde alla corsia più lunga in caso di parità
+static inline int argmax2(double q0, double q1, State st){
+    if(q1 > q0) return 1;
+    if(q0 > q1) return 0;
+    // tie: prefer the action that gives green to the longer queue
+    // action 0 -> TL1 green (helps n1); action 1 -> TL2 green (helps n2)
+    return (st.n1 >= st.n2) ? 0 : 1;
 }
 
 void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *policy){  // Estrae la policy greedy dalla Q-table.
     int S = mdp_num_states(p);
     for(int s=0; s<S; ++s){
-        int a = argmax2(Q[s*2+0], Q[s*2+1]);
+        State st = state_decode(p, s);
+        int a = argmax2(Q[s*2+0], Q[s*2+1], st);
         policy[s] = (unsigned char)a;
     }
 }
@@ -200,7 +209,7 @@ double mdp_q_learning(const MDPParams *p, State s, int multiSim, int steps, unsi
         if(((double)(xorshift32(&rng)) / (double)UINT32_MAX) < eps){
             a = (xorshift32(&rng) & 1u) ? 1 : 0; // random tra {0,1}
         }else{
-            a = argmax2(Q[s_idx*2+0], Q[s_idx*2+1]);
+            a = argmax2(Q[s_idx*2+0], Q[s_idx*2+1], s);
         }
         // Ambiente: una transizione campionata
         State sp; int r;

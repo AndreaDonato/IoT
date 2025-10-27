@@ -11,3 +11,5 @@ Cose da implementare:
 - Un programmino per il caso non smart (switch di semafori fisso ogni TOT azioni), per avere un riferimento di quanto migliora la situazione
 
 COMPILAZIONE: gcc main.c traffic_lights.c -o smart_traffic.exe
+
+MODIFIICARE TIE-BREAK DETERMINISTICO (argmax2) e capiire perchè con 0 : 1 una coda non si svuota mai
