@@ -139,7 +139,6 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
             ctr++;
         }                                          
     }
-    printf("Totale auto residue: %d\n", s.n1 + s.n2);                       // stampa il numero totale di auto residue alla fine della simulazione
     return R;                                                               // ritorna il reward cumulato
 }
 

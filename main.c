@@ -89,7 +89,7 @@ int main(int argc, char const *argv[])
     // 2) Simula policy appresa con Q-learning
     for(int i=0; i<simulations; i++){
         unsigned int s=seed+1000+i;
-        int Rmax = mdp_q_learning(&P, state, 1, steps, 987654u, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T);
+        int Rmax = mdp_q_learning(&P, state, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T);
         printf("[QL] Reward cumulato=%d\n", Rmax);      
     }
     for(int j=0;j<100;j++){ 
