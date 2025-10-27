@@ -110,7 +110,7 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
 int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
     int R=0;                                                                // reward cumulato
     int ctr=0;                                                              // counter per snapshots
-    for(int t=1; t<steps+1; t++){                                           // cicla per ciascun passo di simulazione
+    for(int t=0; t<steps+1; t++){                                           // cicla per ciascun passo di simulazione
         int idx = state_encode(p,s);                                        // codifica lo stato corrente in un indice
         int a = policy[idx];                                                // seleziona l'azione secondo la policy
         unsigned int r1 = xorshift32(rng_state);                            // genera due numeri pseudocasuali per calcolare le nuove auto che arrivano

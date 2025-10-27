@@ -19,11 +19,11 @@ int main(int argc, char const *argv[])
         .low_th=15, .med_th=30,
         .gamma=0.95
     };
-    int steps=1000;                     // numero di passi di simulazione
+    int steps=1000000;                     // numero di passi di simulazione
     unsigned int seed=12345;            // seed per il generatore di numeri pseudocasuali
     int simulations=10;                 // numero di simulazioni per valutare la policy
 
-    State state={ .n1=0, .n2=0, .g1=1 };  // stato iniziale
+    State state={ .n1=0, .n2=0, .g1=0 };  // stato iniziale
 
     FILE *foutVI  = fopen("outputVI.txt",  "w");
     FILE *foutQL  = fopen("outputQL.txt",  "w");
@@ -51,8 +51,6 @@ int main(int argc, char const *argv[])
     // Q-LEARNING
 
     // Iperparametri base (puoi cambiare liberamente):
-    int episodes      = 1;     // numero di episodi di training
-    int steps_per_ep  = 10000;    // passi per episodio (orizzonte "troncato")
     double alpha      = 0.1;      // learning rate
     double eps_start  = 0.9;     // esplorazione iniziale
     double eps_end    = 0.02;     // esplorazione minima
@@ -83,12 +81,15 @@ int main(int argc, char const *argv[])
     for(int j=0;j<100;j++){ 
         fprintf(foutVI, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations); 
     }
-    memset(N1, 0, sizeof(N1)); memset(N2, 0, sizeof(N2)); memset(R, 0, sizeof(R)); memset(T, 0, sizeof(T));
-    printf("%f\n", N1[7]);
+    /* reset snapshot arrays (they have 100 elements each) - sizeof(N1) would give size of pointer */
+    memset(N1, 0, 100 * sizeof(int));
+    memset(N2, 0, 100 * sizeof(int));
+    memset(R,  0, 100 * sizeof(int));
+    memset(T,  0, 100 * sizeof(int));
     // 2) Simula policy appresa con Q-learning
     for(int i=0; i<simulations; i++){
         unsigned int s=seed+1000+i;
-        int Rmax = mdp_q_learning(&P, state, 1, steps_per_ep, 987654u, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T);
+        int Rmax = mdp_q_learning(&P, state, 1, steps, 987654u, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T);
         printf("[QL] Reward cumulato=%d\n", Rmax);      
     }
     for(int j=0;j<100;j++){ 
