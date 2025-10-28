@@ -3,12 +3,26 @@
 #include <stdint.h> 
 #include "traffic_lights.h"
 
-static inline int clamp(int x, int a, int b){ return x<a?a: (x>b?b:x); }    // assicura che x sia in [a,b]
 
-int mdp_num_states(const MDPParams *p){                                     // conta il numero di stati
+
+
+
+/***************************************
+****** Funzioni Utility Generiche ******
+***************************************/
+
+
+// Una volta aggiornata la lunghezza delle code, serve ad assicurarsi che il risultato non sia mai < 0 o > N_max
+static inline int clamp(int x, int a, int b){ return x<a?a: (x>b?b:x); }
+
+
+// Dati i parametri del problema, restituisce il numero di stati della CdM associata
+int mdp_num_states(const MDPParams *p){
     return (p->max_r1+1)*(p->max_r2+1)*2;
 }
 
+
+// Funzioni di encode e decode per gestire in modo più efficiente la rappresentazione dello stato
 int state_encode(const MDPParams *p, State s){                              // appiattisce l'array 3D dello stato in un solo indice. Efficiente per usare array invece di tabelle multidimensionali o hashmap.
     int W = p->max_r2 + 1;
     int base = s.n1 * W + s.n2;                                             // indice per la coppia (n1,n2)
@@ -26,14 +40,18 @@ State state_decode(const MDPParams *p, int idx){                            // r
     return s;
 }
 
-int mdp_reward(const MDPParams *p, State sp){                               // funzione di calcolo del reward
+
+// Dato uno stato e i parametri scelti dall'utente (i.e. le definizioni di cos'è low, medium e high traffic) restituisce il Reward associato
+int mdp_reward(const MDPParams *p, State sp){
     int N = sp.n1 + sp.n2;
     if (N < p->low_th) return +1;
     if (N < p->med_th) return 0;
     return -1;
 }
 
-static inline unsigned int xorshift32(unsigned int *st){                    // generatore di numeri pseudocasuali deterministico su qualsiasi piattaforma
+
+// Generatore di numeri pseudocasuali (deterministico) su qualsiasi piattaforma, dato un seed di input
+static inline unsigned int xorshift32(unsigned int *st){
     unsigned int x=*st; 
     x ^= x<<13; 
     x ^= x>>17; 
@@ -41,13 +59,38 @@ static inline unsigned int xorshift32(unsigned int *st){                    // g
     return *st=x;
 }
 
-int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]){    // costruisce l'elenco di tutti gli stati successivi possibili e la loro probabilità a partire dallo stato s e dall'azione action. Più efficiente di costruire l'intera matrice di transizione.
-    // action: 0 => TL1 green; 1 => TL2 green
+
+
+
+
+/**********************************************
+****** Time-Based Synchronization Policy ******
+**********************************************/
+//
+// Questa sezione definisce una policy non basata sulle osservazioni: i semafori switchano ogni t steps
+//
+//
+// Da scrivere per avere il benchmark "caso peggiore"
+//
+
+
+/*******************************************
+****** Static Markov Decision Process ******
+*******************************************/
+//
+// Questa sezione di codice calcola la soluzione ottimale del problema statico, dati i parametri
+// Questo è il benchmark "caso migliore"
+//
+
+// Dati uno stato s e un'azione a costruisce l'elenco di tutti i possibili stati successivi con relative probabilità.
+// Più efficiente di costruire l'intera matrice di transizione.
+// Action: 0 => TL1 green; 1 => TL2 green
+int mdp_transitions(const MDPParams *p, State s, int a, int out_idx[], double out_p[]){
     int k=0;
     for(int i=0; i<=p->add_r1_max; i++){                                      // cicla su tutte le possibili nuove auto che arrivano
         for(int j=0; j<=p->add_r2_max; j++){
             State sp;
-            if(action==0){
+            if(a==0){
                 int pass = s.n1<p->out_r1_max? s.n1:p->out_r1_max;                                  // massimo 3 auto passano se TL1 è verde
                 sp.n1 = clamp(s.n1 - pass + i, 0, p->max_r1);
                 sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
@@ -66,6 +109,9 @@ int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], doub
     return k;   // ritorna il numero di stati successivi calcolati
 }
 
+
+
+// Risolve il MDP statico e trova la soluzione ottimale sottoforma di policy
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy){    // calcola il valore atteso della ricompensa (V) e la policy ottima per ciascuno stato. Ritorna il numero di iterazioni eseguite. Il parametro max_iter indica il numero massimo di iterazioni mentre tol la soglia di convergenza; entrambi governano lo stop. 
     int S = mdp_num_states(p);                                              // numero di stati
     for(int i=0; i<S; i++){ 
@@ -110,6 +156,10 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
     return it;                                                              // ritorna il numero di iterazioni eseguite
 }
 
+
+//
+// Date le condizioni iniziali e la policy ottimale del MDP statico, simula una situazione reale e costruisce l'andamento dei parametri nel tempo
+//
 int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
     int R=0;                                                                // reward cumulato
     int ctr=0;                                                              // counter per snapshots
@@ -142,17 +192,33 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
             ctr++;
         }                                          
     }
-    return R;                                                               // ritorna il reward cumulato
+    return R;                                                               // ritorna il reward cumulato finale
 }
 
-// implementazione Q-learning
 
-static inline int mdp_sample_arrivals(unsigned int *rng_state, int max_add){    // Ritorna i in {0..max_add} uniforme
+
+
+
+/***************************************
+****** Q-learning & MDP Dinamico *******
+***************************************/
+
+//
+// Questa sezione di codice implementa il Q-Learning su un singolo problema statico, consentendo però di generalizzare in modo "smooth" al caso dinamico
+// Applicando in sequenza la funzione mdp_q_learning, le si può dare via via in input lo stato a partire dal quale l'algoritmo inizia a imparare dinamicamente le nuove azioni ottimali 
+// Questa è una condizione realistica, che a livello di performance si piazza in mezzo ai due benchmark
+//
+
+
+// Estrae in modo uniforme un numero da 0 a max_add di nuove macchine
+static inline int mdp_sample_arrivals(unsigned int *rng_state, int max_add){
     unsigned int r = xorshift32(rng_state);     
     return (int)(r % (max_add+1));      
 }
 
-static inline void mdp_env_step(const MDPParams *p, State s, int action, unsigned int *rng_state, State *sp_out, int *r_out){   // Una singola transizione ambiente per Q-learning: campiona arrivi, applica azione, calcola reward.
+
+// Un singolo step per il problema di Q-learning: estrae gli arrivi, applica l'azione e calcola il reward, restituendo lo stato successivo
+static inline void mdp_env_step(const MDPParams *p, State s, int action, unsigned int *rng_state, State *sp_out, int *r_out){
     int i = mdp_sample_arrivals(rng_state, p->add_r1_max);
     int j = mdp_sample_arrivals(rng_state, p->add_r2_max);
 
@@ -182,6 +248,8 @@ static inline int argmax2(double q0, double q1, State st){
     return (st.n1 >= st.n2) ? 0 : 1;
 }
 
+// ###############################################################################################################################
+// Mi sa che questa funzione non la usaremo più
 void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *policy){  // Estrae la policy greedy dalla Q-table.
     int S = mdp_num_states(p);
     for(int s=0; s<S; ++s){
@@ -190,7 +258,11 @@ void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *polic
         policy[s] = (unsigned char)a;
     }
 }
+// ###############################################################################################################################
 
+
+
+// Applica steps volte un singolo passo della simulazione, aggiornando via via tutti i parametri del problema di Q-Learning e costruendo l'andamento dei parametri nel tempo
 double mdp_q_learning(const MDPParams *p, State s, int multiSim, int steps, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned char *policy, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
    
     FILE *fout  = fopen("QLoutput.txt",  "w");
@@ -243,3 +315,10 @@ double mdp_q_learning(const MDPParams *p, State s, int multiSim, int steps, unsi
     return last_avg_return;
 }
 
+/***********************************************************
+****** Fasce Orarie, Macchine in mezzo all'incrocio  *******
+***********************************************************/
+
+//
+// Questa sezione di codice aggiunge complicazioni e imprevisti alla simulazione base, implementando distribuzioni dinamiche e gente che passa quando non dovrebbe
+//

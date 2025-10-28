@@ -44,7 +44,7 @@ State state_decode(const MDPParams *p, int idx);
 int mdp_reward(const MDPParams *p, State sp);
 
 // Elenca le possibile transizioni da (s, a) con probabilità uniformi (24 esiti: 6×4) e ritorna il numero di next states riempiti in out_idx[], out_p[].
-int mdp_transitions(const MDPParams *p, State s, int action, int out_idx[], double out_p[]);
+int mdp_transitions(const MDPParams *p, State s, int a, int out_idx[], double out_p[]);
 
 // Value Iteration: calcola V e policy ottima (0 => set TL1 verde; 1 => set TL2 verde). max_iter e tol governano lo stop; ritorna iterazioni eseguite.
 int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V, unsigned char *policy);
