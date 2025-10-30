@@ -15,3 +15,5 @@ COMPILAZIONE: gcc main.c traffic_lights.c -o smart_traffic.exe
 MODIFIICARE TIE-BREAK DETERMINISTICO (argmax2) e capiire perchè con 0 : 1 una coda non si svuota mai
 
 Also: questa roba viene applicata solo al caso Q-Learning. Come risolve questi conflitti il caso statico??
+
+Da discutere: Ha senso resettare Q ad ogni fascia oraria (in mdp_q_learning)

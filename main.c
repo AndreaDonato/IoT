@@ -19,9 +19,10 @@ int main(int argc, char const *argv[])
         .low_th=15, .med_th=30,
         .gamma=0.95
     };
-    int steps=1000000;                     // numero di passi di simulazione
+    int hours = 3;                       // numero fasce orarie               
+    int steps=9000/hours;                // numero di passi di simulazione
     unsigned int seed=123456;            // seed per il generatore di numeri pseudocasuali
-    int simulations=10;                 // numero di simulazioni per valutare la policy
+    int simulations=2;                  // numero di simulazioni per valutare la policy
 
     FILE *foutVI  = fopen("outputVI.txt",  "w");
     FILE *foutQL  = fopen("outputQL.txt",  "w");
@@ -63,11 +64,16 @@ int main(int argc, char const *argv[])
     //printf("Q-learning: episodes=%d, steps/ep=%d, alpha=%.3f, eps=%.2f->%.2f (x%.3f), avg_return~%.2f\n", episodes, steps_per_ep, alpha, eps_start, eps_end, eps_decay, avg_ret);
     //fprintf(fout, "Q-learning: episodes=%d, steps_per_ep=%d, alpha=%.3f, eps_start=%.2f, eps_end=%.2f, eps_decay=%.3f, avg_return~%.2f\n", episodes, steps_per_ep, alpha, eps_start, eps_end, eps_decay, avg_ret);
 
+    if(hours<1 || hours>6){
+        printf("Numero di fasce orarie non valido (1-6).\n");
+        return 0;
+    } 
+
     // Valutazione/Confronto in simulazione
-    int *N1=(int*)calloc(100, sizeof(int));         // array per snapshot numero auto r1
-    int *N2=(int*)calloc(100, sizeof(int));         // array per snapshot numero auto r2
-    int *R=(int*)calloc(100, sizeof(int));          // array per snapshot reward cumulato
-    int *T=(int*)calloc(100, sizeof(int));          // array per snapshot tempo
+    int *N1=(int*)calloc(hours * 100, sizeof(int));         // array per snapshot numero auto r1
+    int *N2=(int*)calloc(hours * 100, sizeof(int));         // array per snapshot numero auto r2
+    int *R=(int*)calloc(hours * 100, sizeof(int));          // array per snapshot reward cumulato
+    int *T=(int*)calloc(hours * 100, sizeof(int));          // array per snapshot tempo
 
     // 1) Simula policy da Value Iteration (baseline)
     for(int i=0; i<simulations; i++){
@@ -79,23 +85,32 @@ int main(int argc, char const *argv[])
         fprintf(foutVI, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations); 
     }
     /* reset snapshot arrays (they have 100 elements each) - sizeof(N1) would give size of pointer */
-    memset(N1, 0, 100 * sizeof(int));
-    memset(N2, 0, 100 * sizeof(int));
-    memset(R,  0, 100 * sizeof(int));
-    memset(T,  0, 100 * sizeof(int));
+    memset(N1, 0, hours * 100 * sizeof(int));
+    memset(N2, 0, hours * 100 * sizeof(int));
+    memset(R,  0, hours * 100 * sizeof(int));
+    memset(T,  0, hours * 100 * sizeof(int));
     // 2) Simula policy appresa con Q-learning
     for(int i=0; i<simulations; i++){
         unsigned int s=seed+1000+i;
-        int Rmax = mdp_q_learning(&P, s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T);
-        printf("[QL] Reward cumulato=%d\n", Rmax);      
+        int cumR = 0; /* cumulative reward across hours for this simulation */
+        for(int j=1; j<=hours; j++){
+            /* Aggiorna i parametri per la fascia oraria (se necessario) */
+            adjust_params_for_hour(&P, hours, j);
+            double avg = mdp_q_learning(&P, &s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T, &cumR, j-1);
+            printf("[QL] Reward cumulato=%d (avg=%.2f)\n", cumR, avg);
+        }
     }
-    for(int j=0;j<100;j++){ 
+    for(int x=0; x<hours*100; x++){ 
+        printf("%d: %d\n", x, R[x]); 
+    }
+
+    for(int j=0;j<hours*100;j++){ 
         fprintf(foutQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations); 
     }
     free(V); free(Pi_VI);
     free(Q); free(Pi_ql);
     free(N1); free(N2);
     free(R); free(T);
-
+    fclose(foutVI); fclose(foutQL);
     return 0;
 }

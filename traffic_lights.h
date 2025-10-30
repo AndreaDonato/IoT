@@ -15,7 +15,7 @@ typedef struct {
 // Q ha dimensione mdp_num_states(p)*2 (due azioni).
 // Restituisce il reward medio per episodio.
 double mdp_q_learning(const MDPParams *p,
-                      State s,
+                      State *s,
                       int multiSim,          // flag per output dettagliato in training Q-learning
                       int steps_per_ep,      // passi per episodio
                       unsigned int seed,     // seed RNG
@@ -25,8 +25,10 @@ double mdp_q_learning(const MDPParams *p,
                       double eps_decay,      // moltiplicatore per eps a fine episodio (e.g. 0.995)
                       double *Q,             // out: tabella Q (S*2)
                       unsigned char *policy,  // out: policy greedy da Q (S)
-                      int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime
-                      );
+                      int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime,
+                      int *G_start,          // optional in/out cumulative reward (if non-NULL continue from *G_start and write back)
+                      int h                // fascia oraria                 
+                    );
 
 // Estrae la policy greedy dalla Q-table.
 void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *policy);
@@ -51,3 +53,6 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
 
 // Simulazione seguendo la policy per T passi; ritorna reward cumulato.
 int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime);
+
+// Modifica i parametri MDP in base alla fascia oraria corrente (hours totale, j fascia corrente)
+void adjust_params_for_hour(MDPParams *P, int hours, int j);
