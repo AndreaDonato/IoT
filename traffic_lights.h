@@ -25,10 +25,9 @@ double mdp_q_learning(const MDPParams *p,
                       double eps_decay,      // moltiplicatore per eps a fine episodio (e.g. 0.995)
                       double *Q,             // out: tabella Q (S*2)
                       unsigned int *N,       // out: contatore visite (S*2)
-                      unsigned char *policy,  // out: policy greedy da Q (S)
                       int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime,
                       int *G_start,          // optional in/out cumulative reward (if non-NULL continue from *G_start and write back)
-                      int h                // fascia oraria                 
+                      int h                  // fascia oraria                 
                     );
 
 // Estrae la policy greedy dalla Q-table.

@@ -264,7 +264,7 @@ void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *polic
 
 
 // Applica steps volte un singolo passo della simulazione, aggiornando via via tutti i parametri del problema di Q-Learning e costruendo l'andamento dei parametri nel tempo
-double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned int *N, unsigned char *policy, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime, int *G_start, int h){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
+double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned int *N, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime, int *G_start, int h){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
    
     FILE *fout  = fopen("QLoutput.txt",  "w");
     
@@ -301,16 +301,22 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
         //eps = fmax(eps_end, eps * eps_decay);
         eps = fmax(eps_end, (double)c/(c+t)); // decay più lento
         last_avg_return = 0.9*last_avg_return + 0.1*(double)G;        // Semplice media mobile del ritorno per log/diagnostica
+
+        int index = 0, tmp = -1;
+
         if ((t) % 100 == 0 && multiSim==0) {
             printf("[QL][train] ep=%d/%d  eps=%.3f  return=%d  avg=%.2f\n", t + 1, steps, eps, G, last_avg_return);
             fprintf(fout, "%d %d %d %d\n", t, s->n1, s->n2, G);
         }
         else if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi  
         int base = (h>=0) ? (100*h) : 0;
-        snapshotAutoN1[base+ctr]+= s->n1;                                       // salva il numero totale di auto in questo snapshot
-        snapshotAutoN2[base+ctr]+= s->n2;                                       // salva il numero totale di auto in questo snapshot
-        snaphotReward[base+ctr]+=G;                                              // salva il reward cumulato in questo snapshot
-        snapshopTime[base+ctr]=t + steps * h;                                    // salva il tempo (passi) in questo snapshot
+        index = base+ctr;
+        if(index == tmp) printf("Indice %d duplicato!\n", tmp);
+        snapshotAutoN1[index]+= s->n1;                                       // salva il numero totale di auto in questo snapshot
+        snapshotAutoN2[index]+= s->n2;                                       // salva il numero totale di auto in questo snapshot
+        snaphotReward[index]+=G;                                              // salva il reward cumulato in questo snapshot
+        snapshopTime[index]=t + steps * h;                                    // salva il tempo (passi) in questo snapshot
+        tmp = index;
         ctr++;
         }
     }

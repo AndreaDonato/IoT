@@ -20,7 +20,6 @@ int main(int argc, char const *argv[])
         .gamma=0.95
     };
     int hours = 2;                       // numero fasce orarie               
-    int steps=9000/hours;                // numero di passi di simulazione
     unsigned int seed=123456;            // seed per il generatore di numeri pseudocasuali
     int simulations=10;                  // numero di simulazioni per valutare la policy
 
@@ -28,18 +27,20 @@ int main(int argc, char const *argv[])
     FILE *foutQL  = fopen("outputQL.txt",  "w");
 
     // Leggi i parametri da linea di comando
-    if(argc==2){ hours=atoi(argv[1]); }
-    if(argc>=4){ P.max_r1=atoi(argv[2]); P.max_r2=atoi(argv[3]); }
+    if(argc>=2){ hours=atoi(argv[1]); }                                      // hours
+    int steps = 3000/hours;                                            // numero di passi di simulazione
+    if(argc>=4){ P.max_r1=atoi(argv[2]); P.max_r2=atoi(argv[3]); }           // n1_max, n2_max
     if(argc>=6){ P.add_r1_max=atoi(argv[4]); P.add_r2_max=atoi(argv[5]);}
     if(argc>=8){ P.out_r1_max=atoi(argv[6]); P.out_r2_max=atoi(argv[7]);}
     if(argc>=10){ P.low_th=atoi(argv[8]); P.med_th=atoi(argv[9]); }
     if(argc>=11){ P.gamma=atof(argv[10]); }
-    if(argc>=12){ steps=atoi(argv[11]); }
-    if(argc>=13){ seed=(unsigned int)strtoul(argv[12],NULL,10); }
-    if(argc>=14){ simulations=atoi(argv[13]); }
-    if(argc==0 || argc>=14){ usage(argv[0]); return 1; }
+    if(argc>=12){ seed=(unsigned int)strtoul(argv[11],NULL,10); }
+    if(argc>=13){ simulations=atoi(argv[12]); }
+    if(argc>=14 && hours==1){ steps=atoi(argv[13]); }
+    if(argc==0 || argc>14){ usage(argv[0]); return 1; }
 
-    State s0 = (State){ .n1=0, .n2=0, .g1=0 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
+
+    State s_init = (State){ .n1=0, .n2=0, .g1=0 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
 
     // VALUE ITERATION 
 
@@ -60,7 +61,6 @@ int main(int argc, char const *argv[])
 
     unsigned int *N = (unsigned int*)calloc(S*2, sizeof(unsigned int));               // contatore visite (stato, azione) per adattare learning rate
     double *Q = (double*)calloc(S*2, sizeof(double));                    // Q-table (S stati, 2 azioni)
-    unsigned char *Pi_ql = (unsigned char*)malloc(S);                    // policy greedy da Q-learning
 
     //double avg_ret = mdp_q_learning(&P, state, 0, steps_per_ep, 987654u, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql); // allena e produce policy greedy
     //printf("Q-learning: episodes=%d, steps/ep=%d, alpha=%.3f, eps=%.2f->%.2f (x%.3f), avg_return~%.2f\n", episodes, steps_per_ep, alpha, eps_start, eps_end, eps_decay, avg_ret);
@@ -78,10 +78,11 @@ int main(int argc, char const *argv[])
     int *T=(int*)calloc(hours * 100, sizeof(int));          // array per snapshot tempo
 
     // 1) Simula policy da Value Iteration (baseline)
+    State s0 = s_init;
     for(int i=0; i<simulations; i++){
         unsigned int s=seed+i;                      // copia il seed per non modificare l'originale
         int Rmax = mdp_simulate(&P, s0, Pi_VI, steps, &s, N1, N2, R, T);
-        printf("[VI] Reward cumulato=%d\n", Rmax);
+        //printf("[VI] Reward cumulato=%d\n", Rmax);
     }
     for(int j=0;j<100;j++){ 
         fprintf(foutVI, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations); 
@@ -91,27 +92,34 @@ int main(int argc, char const *argv[])
     memset(N2, 0, hours * 100 * sizeof(int));
     memset(R,  0, hours * 100 * sizeof(int));
     memset(T,  0, hours * 100 * sizeof(int));
+   
+   
     // 2) Simula policy appresa con Q-learning
     for(int i=0; i<simulations; i++){
-        for(int i=0; i<S*2; ++i) Q[i] = 0.0;
+        if(hours==1){
+            s0 = s_init;
+            memset(Q, 0, S * 2 * sizeof(double));
+        }
+
+        //for(int i=0; i<S*2; ++i) Q[i] = 0.0;
         unsigned int s=seed+1000+i;
         int cumR = 0; /* cumulative reward across hours for this simulation */
         for(int j=1; j<=hours; j++){
             /* Aggiorna i parametri per la fascia oraria (se necessario) */
             adjust_params_for_hour(&P, hours, j);
-            double avg = mdp_q_learning(&P, &s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, N, Pi_ql, N1, N2, R, T, &cumR, j-1);
-            printf("[QL] Reward cumulato=%d (avg=%.2f)\n", cumR, avg);
+            double avg = mdp_q_learning(&P, &s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, N, N1, N2, R, T, &cumR, j-1);
+            //printf("[QL] Reward cumulato=%d (avg=%.2f)\n", cumR, avg);
         }
     }
-    for(int x=0; x<hours*100; x++){ 
+    /*for(int x=0; x<hours*100; x++){ 
         printf("%d: %d\n", x, R[x]); 
-    }
+    }*/
 
     for(int j=0;j<hours*100;j++){ 
         fprintf(foutQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations);
     }
     free(V); free(Pi_VI);
-    free(Q); free(Pi_ql);
+    free(Q);
     free(N1); free(N2);
     free(R); free(T);
     free(N);
