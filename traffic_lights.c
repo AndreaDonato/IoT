@@ -268,7 +268,7 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
     FILE *fout  = fopen("QLoutput.txt",  "w");
     
     int S = mdp_num_states(p);
-    for(int i=0; i<S*2; ++i) Q[i] = 0.0;            // Inizializza Q a zero
+    //for(int i=0; i<S*2; ++i) Q[i] = 0.0;            // Inizializza Q a zero
     unsigned int rng = seed;                        // RNG locale
     double eps = eps_start;
     double last_avg_return = 0.0;
@@ -294,8 +294,9 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
         G += r;
         *s = sp;
         // Aggiorna epsilon (decadimento moltiplicativo) e clamp tra [eps_end, eps_start]
-        double k=10;
-        eps = k/(k+(t+1));
+        //double k=10;
+        //eps = k/(k+(t+1));
+        eps = fmax(eps_end, eps * eps_decay);
         if(eps < eps_end) eps = eps_end;
         if(eps > eps_start) eps = eps_start;
         last_avg_return = 0.9*last_avg_return + 0.1*(double)G;        // Semplice media mobile del ritorno per log/diagnostica
