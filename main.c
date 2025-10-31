@@ -5,7 +5,7 @@
 
 static void usage(const char* prog){
     fprintf(stderr,
-      "Uso: %s [max_r1 max_r2 add_r1_max add_r2_max out_r1_max out_r2_max low_th med_th gamma steps seed simulations]\n"
+      "Uso: %s [hours max_r1 max_r2 add_r1_max add_r2_max out_r1_max out_r2_max low_th med_th gamma steps seed simulations]\n"
       "Esempio (stato default): %s\n", prog, prog);
 }
 
@@ -19,24 +19,25 @@ int main(int argc, char const *argv[])
         .low_th=15, .med_th=30,
         .gamma=0.95
     };
-    int hours = 3;                       // numero fasce orarie               
+    int hours = 2;                       // numero fasce orarie               
     int steps=9000/hours;                // numero di passi di simulazione
     unsigned int seed=123456;            // seed per il generatore di numeri pseudocasuali
-    int simulations=2;                  // numero di simulazioni per valutare la policy
+    int simulations=10;                  // numero di simulazioni per valutare la policy
 
     FILE *foutVI  = fopen("outputVI.txt",  "w");
     FILE *foutQL  = fopen("outputQL.txt",  "w");
 
     // Leggi i parametri da linea di comando
-    if(argc>=3){ P.max_r1=atoi(argv[1]); P.max_r2=atoi(argv[2]); }
-    if(argc>=5){ P.add_r1_max=atoi(argv[3]); P.add_r2_max=atoi(argv[4]);}
-    if(argc>=7){ P.out_r1_max=atoi(argv[5]); P.out_r2_max=atoi(argv[6]);}
-    if(argc>=9){ P.low_th=atoi(argv[7]); P.med_th=atoi(argv[8]); }
-    if(argc>=10){ P.gamma=atof(argv[9]); }
-    if(argc>=11){ steps=atoi(argv[10]); }
-    if(argc>=12){ seed=(unsigned int)strtoul(argv[11],NULL,10); }
-    if(argc>=13){ simulations=atoi(argv[12]); }
-    if(argc==2){ usage(argv[0]); return 1; }
+    if(argc==2){ hours=atoi(argv[1]); }
+    if(argc>=4){ P.max_r1=atoi(argv[2]); P.max_r2=atoi(argv[3]); }
+    if(argc>=6){ P.add_r1_max=atoi(argv[4]); P.add_r2_max=atoi(argv[5]);}
+    if(argc>=8){ P.out_r1_max=atoi(argv[6]); P.out_r2_max=atoi(argv[7]);}
+    if(argc>=10){ P.low_th=atoi(argv[8]); P.med_th=atoi(argv[9]); }
+    if(argc>=11){ P.gamma=atof(argv[10]); }
+    if(argc>=12){ steps=atoi(argv[11]); }
+    if(argc>=13){ seed=(unsigned int)strtoul(argv[12],NULL,10); }
+    if(argc>=14){ simulations=atoi(argv[13]); }
+    if(argc==0 || argc>=14){ usage(argv[0]); return 1; }
 
     State s0 = (State){ .n1=0, .n2=0, .g1=0 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
 
@@ -57,6 +58,7 @@ int main(int argc, char const *argv[])
     double eps_end    = 0.02;     // esplorazione minima
     double eps_decay  = 0.995;    // decadimento per episodio
 
+    unsigned int *N = (unsigned int*)calloc(S*2, sizeof(unsigned int));               // contatore visite (stato, azione) per adattare learning rate
     double *Q = (double*)calloc(S*2, sizeof(double));                    // Q-table (S stati, 2 azioni)
     unsigned char *Pi_ql = (unsigned char*)malloc(S);                    // policy greedy da Q-learning
 
@@ -97,7 +99,7 @@ int main(int argc, char const *argv[])
         for(int j=1; j<=hours; j++){
             /* Aggiorna i parametri per la fascia oraria (se necessario) */
             adjust_params_for_hour(&P, hours, j);
-            double avg = mdp_q_learning(&P, &s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, Pi_ql, N1, N2, R, T, &cumR, j-1);
+            double avg = mdp_q_learning(&P, &s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, N, Pi_ql, N1, N2, R, T, &cumR, j-1);
             printf("[QL] Reward cumulato=%d (avg=%.2f)\n", cumR, avg);
         }
     }
@@ -106,12 +108,14 @@ int main(int argc, char const *argv[])
     }
 
     for(int j=0;j<hours*100;j++){ 
-        fprintf(foutQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations); 
+        fprintf(foutQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations);
     }
     free(V); free(Pi_VI);
     free(Q); free(Pi_ql);
     free(N1); free(N2);
     free(R); free(T);
+    free(N);
     fclose(foutVI); fclose(foutQL);
+    
     return 0;
 }
