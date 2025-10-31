@@ -9,6 +9,10 @@ typedef struct {
     double gamma;                 // sconto (default 0.95)
 } MDPParams;
 
+
+// Stampa il progresso dei cicli
+void print_progress(double progress);
+
 // --- AGGIUNTA: prototipi Q-learning ---
 
 // Allena una Q-table con Q-learning a orizzonte infinito scontato.

@@ -3,15 +3,33 @@
 #include <string.h>
 #include "traffic_lights.h"
 
+
+
+
+// Mostra l'ordine dei parametri da inserire manualmente. Il codice gira anche con una chiamata senza parametri, con valori standard.
 static void usage(const char* prog){
     fprintf(stderr,
       "Uso: %s [hours max_r1 max_r2 add_r1_max add_r2_max out_r1_max out_r2_max low_th med_th gamma steps seed simulations]\n"
       "Esempio (stato default): %s\n", prog, prog);
 }
 
+
+
+
+
 int main(int argc, char const *argv[])
 {
-    // Inizializzazione dei parametri MDP
+
+    /*************************************
+    ***** Inizializzazione parametri *****
+    *************************************/
+    
+    //
+    // Inizializzazione di default in caso non vengano specificati valori da linea di comando
+    //
+
+
+    // Struttura dati con parametri di defult
     MDPParams P = {
         .max_r1=40, .max_r2=25,
         .add_r1_max=5, .add_r2_max=3,
@@ -19,19 +37,27 @@ int main(int argc, char const *argv[])
         .low_th=15, .med_th=30,
         .gamma=0.95
     };
+
+    State s_init = (State){ .n1=0, .n2=0, .g1=0 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
+
+
+    //
+    // Parametri delle simulazioni
+    //
     int hours = 2;                       // numero fasce orarie               
     unsigned int seed=123456;            // seed per il generatore di numeri pseudocasuali
     int simulations=10;                  // numero di simulazioni per valutare la policy
 
-    FILE *foutVI  = fopen("outputVI.txt",  "w");
-    FILE *foutQL  = fopen("outputQL.txt",  "w");
 
-    // Leggi i parametri da linea di comando
-    if(argc>=2){ hours=atoi(argv[1]); }                                      // hours
-    int steps = 3000/hours;                                            // numero di passi di simulazione
-    if(argc>=4){ P.max_r1=atoi(argv[2]); P.max_r2=atoi(argv[3]); }           // n1_max, n2_max
-    if(argc>=6){ P.add_r1_max=atoi(argv[4]); P.add_r2_max=atoi(argv[5]);}
-    if(argc>=8){ P.out_r1_max=atoi(argv[6]); P.out_r2_max=atoi(argv[7]);}
+    //
+    // Parametri da linea di comando
+    //
+    if(argc>=2) { hours = atoi(argv[1]); }                                      // hours
+    if(hours<1 || hours>6){ printf("Numero di fasce orarie non valido (1-6).\n"); return 1; }
+    int steps = 3000/hours;                                                     // numero di passi di simulazione
+    if(argc>=4) { P.max_r1 = atoi(argv[2]); P.max_r2 = atoi(argv[3]); }         // n1_max, n2_max
+    if(argc>=6) { P.add_r1_max=atoi(argv[4]); P.add_r2_max=atoi(argv[5]);}
+    if(argc>=8) { P.out_r1_max=atoi(argv[6]); P.out_r2_max=atoi(argv[7]);}
     if(argc>=10){ P.low_th=atoi(argv[8]); P.med_th=atoi(argv[9]); }
     if(argc>=11){ P.gamma=atof(argv[10]); }
     if(argc>=12){ seed=(unsigned int)strtoul(argv[11],NULL,10); }
@@ -40,20 +66,20 @@ int main(int argc, char const *argv[])
     if(argc==0 || argc>14){ usage(argv[0]); return 1; }
 
 
-    State s_init = (State){ .n1=0, .n2=0, .g1=0 };      // stato iniziale di simulazione (strade vuote, TL1 verde)
-
-    // VALUE ITERATION 
-
+    //
+    // Parametri MDP 
+    //
     int S = mdp_num_states(&P);                                         // numero di stati                      
     double *V = (double*)calloc(S, sizeof(double));                     // valore di ogni stato inizializzato a 0
     unsigned char *Pi_VI = (unsigned char*)malloc(S);                   // policy ottima (0 => TL1 verde; 1 => TL2 verde)
     int it = mdp_value_iteration(&P, 1000, 1e-6, V, Pi_VI);             // calcola il valore di ciascuno stato e la relativa policy ottima con Value Iteration
-    printf("Value Iteration: %d iterazioni, S=%d stati\n", it, S);
+    //printf("Value Iteration: %d iterazioni, S=%d stati\n", it, S);
     //fprintf(fout, "Parametri: max_r1=%d, max_r2=%d, add_r1_max=%d, add_r2_max=%d, out_r1_max=%d, out_r2_max=%d, low_th=%d, med_th=%d, gamma=%.2f, steps=%d, seed=%u, simulations=%d, iterations=%d, tot_states=%d\n", P.max_r1, P.max_r2, P.add_r1_max, P.add_r2_max, P.out_r1_max, P.out_r2_max, P.low_th, P.med_th, P.gamma, steps, seed, simulations, it, S);
 
-    // Q-LEARNING
 
-    // Iperparametri base (puoi cambiare liberamente):
+    //
+    // Parametri Q-LEARNING
+    //
     double alpha      = 0.1;      // learning rate
     double eps_start  = 0.9;     // esplorazione iniziale
     double eps_end    = 0.02;     // esplorazione minima
@@ -66,42 +92,65 @@ int main(int argc, char const *argv[])
     //printf("Q-learning: episodes=%d, steps/ep=%d, alpha=%.3f, eps=%.2f->%.2f (x%.3f), avg_return~%.2f\n", episodes, steps_per_ep, alpha, eps_start, eps_end, eps_decay, avg_ret);
     //fprintf(fout, "Q-learning: episodes=%d, steps_per_ep=%d, alpha=%.3f, eps_start=%.2f, eps_end=%.2f, eps_decay=%.3f, avg_return~%.2f\n", episodes, steps_per_ep, alpha, eps_start, eps_end, eps_decay, avg_ret);
 
-    if(hours<1 || hours>6){
-        printf("Numero di fasce orarie non valido (1-6).\n");
-        return 0;
-    } 
 
-    // Valutazione/Confronto in simulazione
+    //
+    // Array di supporto per gli snapshot
+    //
     int *N1=(int*)calloc(hours * 100, sizeof(int));         // array per snapshot numero auto r1
     int *N2=(int*)calloc(hours * 100, sizeof(int));         // array per snapshot numero auto r2
-    int *R=(int*)calloc(hours * 100, sizeof(int));          // array per snapshot reward cumulato
-    int *T=(int*)calloc(hours * 100, sizeof(int));          // array per snapshot tempo
+    int *R =(int*)calloc(hours * 100, sizeof(int));          // array per snapshot reward cumulato
+    int *T =(int*)calloc(hours * 100, sizeof(int));          // array per snapshot tempo
 
-    // 1) Simula policy da Value Iteration (baseline)
+
+    FILE *foutVI  = fopen("outputVI.txt",  "w");
+    FILE *foutQL  = fopen("outputQL.txt",  "w");
+
+
+
+
+    
+    /********************************
+    ******** Value Iteration ********
+    ********************************/
+    
     State s0 = s_init;
+    printf("\nValue Iteration in progress...\n");
+
     for(int i=0; i<simulations; i++){
+        print_progress((double)i / simulations);
         unsigned int s=seed+i;                      // copia il seed per non modificare l'originale
         int Rmax = mdp_simulate(&P, s0, Pi_VI, steps, &s, N1, N2, R, T);
         //printf("[VI] Reward cumulato=%d\n", Rmax);
     }
+    printf("\n");
+
     for(int j=0;j<100;j++){ 
         fprintf(foutVI, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations); 
     }
-    /* reset snapshot arrays (they have 100 elements each) - sizeof(N1) would give size of pointer */
+ 
+   
+
+
+
+    /*********************************
+    *********** Q-Learning ***********
+    *********************************/
+    
     memset(N1, 0, hours * 100 * sizeof(int));
     memset(N2, 0, hours * 100 * sizeof(int));
     memset(R,  0, hours * 100 * sizeof(int));
     memset(T,  0, hours * 100 * sizeof(int));
-   
-   
-    // 2) Simula policy appresa con Q-learning
+
+    printf("\nQ-Learning in progress...\n");
+
     for(int i=0; i<simulations; i++){
+        print_progress(i / simulations);
         if(hours==1){
             s0 = s_init;
             memset(Q, 0, S * 2 * sizeof(double));
         }
+        print_progress((double) i / simulations);
 
-        //for(int i=0; i<S*2; ++i) Q[i] = 0.0;
         unsigned int s=seed+1000+i;
         int cumR = 0; /* cumulative reward across hours for this simulation */
         for(int j=1; j<=hours; j++){
@@ -111,6 +160,8 @@ int main(int argc, char const *argv[])
             //printf("[QL] Reward cumulato=%d (avg=%.2f)\n", cumR, avg);
         }
     }
+    printf("\n\n");
+
     /*for(int x=0; x<hours*100; x++){ 
         printf("%d: %d\n", x, R[x]); 
     }*/
@@ -118,11 +169,19 @@ int main(int argc, char const *argv[])
     for(int j=0;j<hours*100;j++){ 
         fprintf(foutQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations);
     }
+
+
+
+
+    /*********************************
+    ************** Free **************
+    *********************************/
+
     free(V); free(Pi_VI);
     free(Q);
     free(N1); free(N2);
-    free(R); free(T);
-    free(N);
+    free(R ); free(T);
+    free(N );
     fclose(foutVI); fclose(foutQL);
     
     return 0;

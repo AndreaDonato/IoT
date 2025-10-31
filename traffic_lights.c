@@ -61,8 +61,20 @@ static inline unsigned int xorshift32(unsigned int *st){
 }
 
 
+// Stampa il progresso dei cicli
+void print_progress(double progress) {
+    int barWidth = 50;
+    int pos = (int)(barWidth * progress);
 
-
+    printf("\r[");  // \r in testa, così riscrive la riga intera
+    for (int i = 0; i < barWidth; ++i) {
+        if (i < pos) printf("=");
+        else if (i == pos) printf(">");
+        else printf(" ");
+    }
+    printf("] %3.0f%%", progress * 100.0);
+    fflush(stdout);
+}
 
 /**********************************************
 ****** Time-Based Synchronization Policy ******
