@@ -91,7 +91,7 @@ int main(int argc, char const *argv[])
     memset(T,  0, hours * 100 * sizeof(int));
     // 2) Simula policy appresa con Q-learning
     for(int i=0; i<simulations; i++){
-        for(int i=0; i<S*2; ++i) Q[i] = 0.0;            // Inizializza Q a zero
+        for(int i=0; i<S*2; ++i) Q[i] = 0.0;
         unsigned int s=seed+1000+i;
         int cumR = 0; /* cumulative reward across hours for this simulation */
         for(int j=1; j<=hours; j++){
