@@ -197,13 +197,21 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
         }
         R += mdp_reward(p, sp);                                             // calcola il reward per lo stato successivo e lo aggiunge al cumulato
         s = sp;                                                             // passa allo stato successivo
-        if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi  
-            snapshotAutoN1[ctr]+=s.n1;                                       // salva il numero totale di auto in questo snapshot
-            snapshotAutoN2[ctr]+=s.n2;                                       // salva il numero totale di auto in questo snapshot
-            snaphotReward[ctr]+=R;                                           // salva il reward cumulato in questo snapshot
-            snapshopTime[ctr]=t;                                            // salva il tempo (passi) in questo snapshot
-            ctr++;
-        }                                          
+        if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi
+            /*
+             * Protezione: per alcuni valori di `steps` (ad es. steps=2250 quando hours=4)
+             * l'espressione `t % (steps/100) == 0` può risultare true più di 100 volte,
+             * causando scritture fuori dall'array di snapshot (overflow). Qui limitiamo
+             * il numero di snapshot a 100 per chiamata (ctr < 100).
+             */
+            if(ctr < 100) {
+                snapshotAutoN1[ctr]+=s.n1;                                   // salva il numero totale di auto in questo snapshot
+                snapshotAutoN2[ctr]+=s.n2;                                   // salva il numero totale di auto in questo snapshot
+                snaphotReward[ctr]+=R;                                       // salva il reward cumulato in questo snapshot
+                snapshopTime[ctr]=t;                                        // salva il tempo (passi) in questo snapshot
+                ctr++;
+            }
+        }
     }
     return R;                                                               // ritorna il reward cumulato finale
 }
@@ -278,7 +286,6 @@ void mdp_policy_from_Q(const MDPParams *p, const double *Q, unsigned char *polic
 // Applica steps volte un singolo passo della simulazione, aggiornando via via tutti i parametri del problema di Q-Learning e costruendo l'andamento dei parametri nel tempo
 double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned int *N, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime, int *G_start, int h){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
    
-    FILE *fout  = fopen("QLoutput.txt",  "w");
     
     int S = mdp_num_states(p);
     unsigned int rng = seed;                        // RNG locale
@@ -286,7 +293,9 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
     double last_avg_return = 0.0;
     int ctr=0;                                      // counter per snapshots
     int G = (G_start != NULL) ? *G_start : 0;       // ritorno cumulato dell'episodio (somma reward), continua da G_start se fornito
-    int c=10;
+    int c=10;                                       // Parametro per il decadimento armonico di epsilon
+
+    FILE *fout  = fopen("QLoutput.txt",  "w");
     for(int t=0; t<steps; ++t){
         int s_idx = state_encode(p, *s);
         // ε-greedy: con prob ε scegli azione random, altrimenti greedy su Q
@@ -318,22 +327,25 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
 
         if ((t) % 100 == 0 && multiSim==0) {
             printf("[QL][train] ep=%d/%d  eps=%.3f  return=%d  avg=%.2f\n", t + 1, steps, eps, G, last_avg_return);
-            fprintf(fout, "%d %d %d %d\n", t, s->n1, s->n2, G);
+            if(fout) fprintf(fout, "%d %d %d %d\n", t, s->n1, s->n2, G);
         }
-        else if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi  
-        int base = (h>=0) ? (100*h) : 0;
-        index = base+ctr;
-        if(index == tmp) printf("Indice %d duplicato!\n", tmp);
-        snapshotAutoN1[index]+= s->n1;                                       // salva il numero totale di auto in questo snapshot
-        snapshotAutoN2[index]+= s->n2;                                       // salva il numero totale di auto in questo snapshot
-        snaphotReward[index]+=G;                                              // salva il reward cumulato in questo snapshot
-        snapshopTime[index]=t + steps * h;                                    // salva il tempo (passi) in questo snapshot
-        tmp = index;
-        ctr++;
+        else if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi
+            int base = (h>=0) ? (100*h) : 0;
+            /* Protezione: non scrivere più di 100 snapshot per fascia oraria */
+            if(ctr < 100) {
+                index = base+ctr;
+                if(index == tmp) printf("Indice %d duplicato!\n", tmp);
+                snapshotAutoN1[index]+= s->n1;                                   // salva il numero totale di auto in questo snapshot
+                snapshotAutoN2[index]+= s->n2;                                   // salva il numero totale di auto in questo snapshot
+                snaphotReward[index]+=G;                                          // salva il reward cumulato in questo snapshot
+                snapshopTime[index]=t + steps * h;                                // salva il tempo (passi) in questo snapshot
+                tmp = index;
+                ctr++;
+            }
         }
     }
     if(G_start != NULL) *G_start = G; // write back cumulative reward
-    fclose(fout);
+    if(fout) fclose(fout);
     return last_avg_return;
 }
 
@@ -349,72 +361,34 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
 // hours: numero totale di fasce in cui è divisa la giornata
 // j: indice della fascia corrente (1-based)
 // La funzione modifica in-place i campi rilevanti di P (arrivi/deflussi) per simulare variazioni orarie.
-void adjust_params_for_hour(MDPParams *P, int hours, int j){
-    if(hours <= 1) return; // niente da fare se non ci sono fasce multiple
+void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int j){
+    if(hours <= 1) return;                                                                                              // Ignora le modifiche se non ci sono fasce multiple
     switch(hours){
-        case 2:
-            // semplice split mattina/sera: favorisce r1 la prima fascia, r2 la seconda
-            if(j==1){ // giorno
-                P->add_r1_max = 6; P->add_r2_max = 3;
-            } else {  // notte
-                P->add_r1_max = 3; P->add_r2_max = 6;
-            }
+        case 2:                                                                             
+            if     (j==1){ P->add_r1_max = floor(Input.add_r1_max*1.5) ; P->add_r2_max = floor(Input.add_r2_max*1.5) ; } // Giorno (+50% traffico rispetto al valore impostato)
+            else         { P->add_r1_max = ceil (Input.add_r1_max*0.5) ; P->add_r2_max = ceil (Input.add_r2_max*0.5) ; } // Notte (-50%)
             break;
-        case 3:
-            // mattina / mezzogiorno / sera
-            if(j==1){ // mattina
-                P->add_r1_max = 6; P->add_r2_max = 3;
-            } else if(j==2){ // mezzogiorno bilanciato
-                P->add_r1_max = 6; P->add_r2_max = 3;
-            } else { // sera
-                P->add_r1_max = 6; P->add_r2_max = 3;
-            }
+        case 3:                                                                             
+            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.3) ; P->add_r2_max = ceil (Input.add_r1_max*0.3) ; } // 22-06 (-70%)
+            else if(j==2){ P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r1_max*1.4) ; } // 06-14 (+40%)
+            else         { P->add_r1_max = floor(Input.add_r1_max*1.3) ; P->add_r2_max = floor(Input.add_r1_max*1.3) ; } // 14-22 (+30%)
             break;
-         case 4:
-            // mattina / mezzogiorno / sera
-            if(j==1){ // mattina
-                P->add_r1_max = 6; P->add_r2_max = 3;
-            } else if(j==2){ // mezzogiorno bilanciato
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } 
-            else if(j==3){
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            }else { // sera
-                P->add_r1_max = 3; P->add_r2_max = 6;
-            }
+         case 4:                                                                            
+            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.2) ; P->add_r2_max = ceil (Input.add_r1_max*0.2) ; } // 22-04 (-80%)
+            else if(j==2){ P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r1_max*1.4) ; } // 04-10 (+40%)
+            else if(j==3){ P->add_r1_max =       Input.add_r1_max      ; P->add_r2_max =       Input.add_r1_max      ; } // 10-16 (+ 0%)
+            else         { P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r1_max*1.4) ; } // 16-22 (+40%)
             break;
-        case 5:
-            // mattina / mezzogiorno / sera
-            if(j==1){ // mattina
-                P->add_r1_max = 6; P->add_r2_max = 3;
-            } else if(j==2){ // mezzogiorno bilanciato
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } else if(j==3){
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } else if(j==4){
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } else { // sera
-                P->add_r1_max = 3; P->add_r2_max = 6;
-            }
-            break;
-        case 6:
-            // mattina / mezzogiorno / sera
-            if(j==1){ // mattina
-                P->add_r1_max = 6; P->add_r2_max = 3;
-            } else if(j==2){ // mezzogiorno bilanciato
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } else if(j==3){
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } else if(j==4){
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } else if(j==5){
-                P->add_r1_max = 4; P->add_r2_max = 4;
-            } else { // sera
-                P->add_r1_max = 3; P->add_r2_max = 6;
-            }
+        case 6:                                                                             
+            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.2) ; P->add_r2_max = ceil (Input.add_r1_max*0.2) ; } // 22-02 (-80%)
+            else if(j==2){ P->add_r1_max = ceil (Input.add_r1_max*0.4) ; P->add_r2_max = ceil (Input.add_r1_max*0.4) ; } // 02-06 (-60%)
+            else if(j==3){ P->add_r1_max = floor(Input.add_r1_max*1.6) ; P->add_r2_max = floor(Input.add_r1_max*1.6) ; } // 06-10 (+60%) 
+            else if(j==4){ P->add_r1_max = floor(Input.add_r1_max*1.1) ; P->add_r2_max = floor(Input.add_r1_max*1.1) ; } // 10-14 (+10%)
+            else if(j==5){ P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r1_max*1.4) ; } // 14-18 (+30%)
+            else         { P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r1_max*1.4) ; } // 18-22 (+20%)
             break;
         default:
-            printf("adjust_params_for_hour: unsupported number of hours (max 6) %d\n", hours);
+            printf("adjust_params_for_hour: unsupported number of hours (allowed values: 1, 2, 3, 4, 6): %d\n", hours);
             exit(1);
     }
 }

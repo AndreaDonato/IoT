@@ -59,4 +59,4 @@ int mdp_value_iteration(const MDPParams *p, int max_iter, double tol, double *V,
 int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime);
 
 // Modifica i parametri MDP in base alla fascia oraria corrente (hours totale, j fascia corrente)
-void adjust_params_for_hour(MDPParams *P, int hours, int j);
+void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int j);
