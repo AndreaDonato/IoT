@@ -360,7 +360,7 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
 // Cambia i parametri dell'MDP in base alla fascia oraria corrente.
 // hours: numero totale di fasce in cui è divisa la giornata
 // j: indice della fascia corrente (1-based)
-// La funzione modifica in-place i campi rilevanti di P (arrivi/deflussi) per simulare variazioni orarie.
+// La funzione modifica in-place i campi rilevanti di P (arrivi) per simulare variazioni orarie.
 void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int j){
     if(hours <= 1) return;                                                                                              // Ignora le modifiche se non ci sono fasce multiple
     switch(hours){
