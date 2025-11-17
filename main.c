@@ -89,7 +89,8 @@ int main(int argc, char const *argv[])
     double eps_decay  = 0.995;                                                                  // Decadimento per episodio
 
     State s0 = s_init;                                                                           // Stato iniziale di simulazione (strade vuote, TL1 verde)
-    int staticPolicy = 3;                                                                        // Policy statica: switch ogni X passi
+    int staticPolicy = 5;                                                                        // Policy statica: switch ogni X passi
+
     printf("\nStatic simulation in progress...\n");
     for(int i=0; i<simulations; i++){
         print_progress((double)i / simulations);
@@ -183,6 +184,7 @@ int main(int argc, char const *argv[])
     //
     // Per ogni simulazione, il Q-Learning 
     //
+    s0 = s_init;
     for(int i=0; i<simulations; i++){
         print_progress(i / simulations);
 
@@ -206,7 +208,6 @@ int main(int argc, char const *argv[])
     }
     printf("\n");
 
-
     //
     // Stampa gli andamenti di n1, n2 ed R in funzione del tempo
     //
@@ -214,6 +215,14 @@ int main(int argc, char const *argv[])
     for(int j=0;j<hours*100;j++){ 
         fprintf(foutQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations);
     }
+
+
+
+
+    
+    /*********************************
+    ******* Genius Q-Learning ********
+    *********************************/
 
 
     //
@@ -231,6 +240,7 @@ int main(int argc, char const *argv[])
     //
     // Per ogni simulazione, il Q-Learning 
     //
+    s0 = s_init;
     for(int i=0; i<simulations; i++){
         print_progress(i / simulations);
 

@@ -442,12 +442,26 @@ void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int 
     }
 }
 
+
+
+int genius_reward(const MDPParams *p, State sp, int block){
+    int N = sp.n1 + sp.n2;
+    int reward = 0;
+    if (N < p->low_th)  reward+=1;
+    else if (N < p->med_th)  reward+=0;
+    else if (N >= p->med_th) reward-=1;
+    if(block)           reward-=2;
+    else reward+=1;
+
+    return reward;
+}
+
 static inline int genius_mdp_env_step(const MDPParams *p, State s, int action, unsigned int *rng_state, State *sp_out, int *r_out, int block){
     int i = mdp_sample_arrivals(rng_state, p->add_r1_max);
     int j = mdp_sample_arrivals(rng_state, p->add_r2_max);
     int pass=0;    
     State sp;
-    if(block){
+    if(block==1){
         // Se blocca, non fa passare nessuno
         sp.n1 = clamp(s.n1 + i, 0, p->max_r1);
         sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
@@ -464,7 +478,7 @@ static inline int genius_mdp_env_step(const MDPParams *p, State s, int action, u
         sp.g1 = 0;
     }
 
-    *r_out = mdp_reward(p, sp);     // calcola il reward
+    *r_out = genius_reward(p, sp, block);     // calcola il reward
     *sp_out = sp;             // output stato successivo
     return pass;
 }
@@ -479,7 +493,7 @@ int geniusDriversBlock(int a, int consecutive, int blocked, const MDPParams *par
         n=params->out_r2_max;
     }
     if(blocked==0){    // Probabilità che cresce esponenzialmente verso 1
-        k = 1; // parametro di crescita
+        k = 0.2; // parametro di crescita
         p = 1.0 - exp(-k * (double)consecutive/(double)n);
             // Clamping di sicurezza
         if (p < 0.0) p = 0.0;
@@ -489,7 +503,7 @@ int geniusDriversBlock(int a, int consecutive, int blocked, const MDPParams *par
         double r = (double)rand() / (double)RAND_MAX;
         blocked = (r < p) ? 1 : 0;
     }else{
-        k = 1; // parametro di crescita
+        k = 0.5; // parametro di crescita
         p = 1.0 - exp(-k * (double)blockedSteps);
         // Clamping di sicurezza
         if (p < 0.0) p = 0.0;
@@ -518,6 +532,7 @@ double geniusDrivers_q_learning(const MDPParams *p, State *s, int multiSim, int 
     int blockedSteps=0;                  // numero di step in cui una macchina bloccata rimane bloccata
     int consecutive = 0;                    // contatore di auto consecutive.
     int old_action = -1;                 // ultima azione eseguita
+    
     for(int t=0; t<steps; ++t){
         int s_idx = state_encode(p, *s);
         // ε-greedy: con prob ε scegli azione random, altrimenti greedy su Q
@@ -528,7 +543,7 @@ double geniusDrivers_q_learning(const MDPParams *p, State *s, int multiSim, int 
             a = argmax2(Q[s_idx*2+0], Q[s_idx*2+1], *s);
         }
         // Controlla se l'azione è la stessa della volta precedente
-        if(a =! old_action){
+        if(a != old_action){
             consecutive = 0; // resetta il contatore se l'azione è diversa
         }
         block=geniusDriversBlock(a, consecutive, block, p, blockedSteps);
@@ -537,9 +552,12 @@ double geniusDrivers_q_learning(const MDPParams *p, State *s, int multiSim, int 
         } else {
             blockedSteps=0;
         }
+        
         // Ambiente: una transizione campionata
         State sp; int r;
-        consecutive+=genius_mdp_env_step(p, *s, a, &rng, &sp, &r, block);
+        consecutive += genius_mdp_env_step(p, *s, a, &rng, &sp, &r, block);
+        
+        
         int sp_idx = state_encode(p, sp);
         // Target di Q-learning: r + gamma * max_a' Q(sp,a')
         double maxQsp = (Q[sp_idx*2+0] > Q[sp_idx*2+1]) ? Q[sp_idx*2+0] : Q[sp_idx*2+1];
