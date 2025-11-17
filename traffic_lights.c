@@ -85,6 +85,52 @@ void print_progress(double progress) {
 //
 // Da scrivere per avere il benchmark "caso peggiore"
 //
+int static_simulate(const MDPParams *p, State s, int staticPolicy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime){     // simula l'evoluzione della CdM per un certo numero di passi seguendo la policy data. Ritorna il reward cumulato.
+    int R=0;                                                                // reward cumulato
+    int ctr=0;  
+    int a=0;                                                            // counter per snapshots
+    for(int t=0; t<steps+1; t++){                                           // cicla per ciascun passo di simulazione
+        int idx = state_encode(p,s);                                        // codifica lo stato corrente in un indice
+        if(t%staticPolicy==0){
+            a=1-a;
+        }                                            // seleziona l'azione secondo la policy
+        unsigned int r1 = xorshift32(rng_state);                            // genera due numeri pseudocasuali per calcolare le nuove auto che arrivano
+        unsigned int r2 = xorshift32(rng_state);                           
+        int i = (int)(r1 % (p->add_r1_max+1));                              // nuove auto che arrivano su r1
+        int j = (int)(r2 % (p->add_r2_max+1));                              // nuove auto che arrivano su r2
+        State sp;                                                           // stato successivo
+        if(a==0){
+            int pass = s.n1<p->out_r1_max? s.n1:p->out_r1_max;              // massimo 3 auto passano se TL1 è verde (equivale a min(s.n1, 3))
+            sp.n1 = clamp(s.n1 - pass + i, 0, p->max_r1);
+            sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
+            sp.g1 = 1;                                                      // segna nello stato l'informazione TL1 verde per il prossimo passo
+        }else{
+            int pass = s.n2<p->out_r2_max? s.n2:p->out_r2_max;               // massimo 2 auto passano se TL2 è verde (equivale a min(s.n2, 2))
+            sp.n1 = clamp(s.n1 + i, 0, p->max_r1);
+            sp.n2 = clamp(s.n2 - pass + j, 0, p->max_r2);
+            sp.g1 = 0;                                                      // segna nello stato l'informazione TL2 verde per il prossimo passo
+        }
+        R += mdp_reward(p, sp);                                             // calcola il reward per lo stato successivo e lo aggiunge al cumulato
+        s = sp;                                                             // passa allo stato successivo
+        if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi
+            /*
+             * Protezione: per alcuni valori di `steps` (ad es. steps=2250 quando hours=4)
+             * l'espressione `t % (steps/100) == 0` può risultare true più di 100 volte,
+             * causando scritture fuori dall'array di snapshot (overflow). Qui limitiamo
+             * il numero di snapshot a 100 per chiamata (ctr < 100).
+             */
+            if(ctr < 100) {
+                snapshotAutoN1[ctr]+=s.n1;                                   // salva il numero totale di auto in questo snapshot
+                snapshotAutoN2[ctr]+=s.n2;                                   // salva il numero totale di auto in questo snapshot
+                snaphotReward[ctr]+=R;                                       // salva il reward cumulato in questo snapshot
+                snapshopTime[ctr]=t;                                        // salva il tempo (passi) in questo snapshot
+                ctr++;
+            }
+        }
+    }
+    return R;                                                               // ritorna il reward cumulato finale
+}
+
 
 
 /*******************************************
@@ -220,6 +266,7 @@ int mdp_simulate(const MDPParams *p, State s, const unsigned char *policy, int s
 
 
 
+
 /***************************************
 ****** Q-learning & MDP Dinamico *******
 ***************************************/
@@ -349,6 +396,8 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
     return last_avg_return;
 }
 
+
+
 /***********************************************************
 ****** Fasce Orarie, Macchine in mezzo all'incrocio  *******
 ***********************************************************/
@@ -391,4 +440,144 @@ void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int 
             printf("adjust_params_for_hour: unsupported number of hours (allowed values: 1, 2, 3, 4, 6): %d\n", hours);
             exit(1);
     }
+}
+
+static inline int genius_mdp_env_step(const MDPParams *p, State s, int action, unsigned int *rng_state, State *sp_out, int *r_out, int block){
+    int i = mdp_sample_arrivals(rng_state, p->add_r1_max);
+    int j = mdp_sample_arrivals(rng_state, p->add_r2_max);
+    int pass=0;    
+    State sp;
+    if(block){
+        // Se blocca, non fa passare nessuno
+        sp.n1 = clamp(s.n1 + i, 0, p->max_r1);
+        sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
+        sp.g1 = s.g1;  // mantiene lo stato del semaforo
+    } else if(action==0){
+        pass = s.n1 < p->out_r1_max ? s.n1 : p->out_r1_max;  // TL1 verde
+        sp.n1 = clamp(s.n1 - pass + i, 0, p->max_r1);
+        sp.n2 = clamp(s.n2 + j, 0, p->max_r2);
+        sp.g1 = 1;
+    }else{
+        pass = s.n2 < p->out_r2_max ? s.n2 : p->out_r2_max;  // TL2 verde
+        sp.n1 = clamp(s.n1 + i, 0, p->max_r1);
+        sp.n2 = clamp(s.n2 - pass + j, 0, p->max_r2);
+        sp.g1 = 0;
+    }
+
+    *r_out = mdp_reward(p, sp);     // calcola il reward
+    *sp_out = sp;             // output stato successivo
+    return pass;
+}
+
+int geniusDriversBlock(int a, int consecutive, int blocked, const MDPParams *params, int blockedSteps){
+    double k;
+    double p;
+    int n;
+    if(a==1){ // Se il semaforo è rosso
+        n=params->out_r1_max;// Numero massimo di auto totali
+    } else {
+        n=params->out_r2_max;
+    }
+    if(blocked==0){    // Probabilità che cresce esponenzialmente verso 1
+        k = 1; // parametro di crescita
+        p = 1.0 - exp(-k * (double)consecutive/(double)n);
+            // Clamping di sicurezza
+        if (p < 0.0) p = 0.0;
+        if (p > 1.0) p = 1.0;
+
+        // Estrazione
+        double r = (double)rand() / (double)RAND_MAX;
+        blocked = (r < p) ? 1 : 0;
+    }else{
+        k = 1; // parametro di crescita
+        p = 1.0 - exp(-k * (double)blockedSteps);
+        // Clamping di sicurezza
+        if (p < 0.0) p = 0.0;
+        if (p > 1.0) p = 1.0;
+        
+        // Estrazione
+        double r = (double)rand() / (double)RAND_MAX;
+        blocked = (r < p) ? 0 : 1;
+    }
+    return blocked;
+}
+
+double geniusDrivers_q_learning(const MDPParams *p, State *s, int multiSim, int steps, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned int *N, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime, int *G_start, int h){   // Esegue l'algoritmo di Q-learning per un certo numero di episodi e passi per episodio. Ritorna il valore medio del ritorno nell'ultimo episodio.  
+   
+    
+    int S = mdp_num_states(p);
+    unsigned int rng = seed;                        // RNG locale
+    double eps = eps_start;
+    double last_avg_return = 0.0;
+    int ctr=0;                                      // counter per snapshots
+    int G = (G_start != NULL) ? *G_start : 0;       // ritorno cumulato dell'episodio (somma reward), continua da G_start se fornito
+    int c=10;                                       // Parametro per il decadimento armonico di epsilon
+
+    FILE *fout  = fopen("QLoutput.txt",  "w");
+    int block=0;
+    int blockedSteps=0;                  // numero di step in cui una macchina bloccata rimane bloccata
+    int consecutive = 0;                    // contatore di auto consecutive.
+    int old_action = -1;                 // ultima azione eseguita
+    for(int t=0; t<steps; ++t){
+        int s_idx = state_encode(p, *s);
+        // ε-greedy: con prob ε scegli azione random, altrimenti greedy su Q
+        int a;
+        if(((double)(xorshift32(&rng)) / (double)UINT32_MAX) < eps){
+            a = (xorshift32(&rng) & 1u) ? 1 : 0; // random tra {0,1}
+        }else{
+            a = argmax2(Q[s_idx*2+0], Q[s_idx*2+1], *s);
+        }
+        // Controlla se l'azione è la stessa della volta precedente
+        if(a =! old_action){
+            consecutive = 0; // resetta il contatore se l'azione è diversa
+        }
+        block=geniusDriversBlock(a, consecutive, block, p, blockedSteps);
+        if(block){
+            blockedSteps++;
+        } else {
+            blockedSteps=0;
+        }
+        // Ambiente: una transizione campionata
+        State sp; int r;
+        consecutive+=genius_mdp_env_step(p, *s, a, &rng, &sp, &r, block);
+        int sp_idx = state_encode(p, sp);
+        // Target di Q-learning: r + gamma * max_a' Q(sp,a')
+        double maxQsp = (Q[sp_idx*2+0] > Q[sp_idx*2+1]) ? Q[sp_idx*2+0] : Q[sp_idx*2+1];
+        int idx_sa = s_idx * 2 + a;
+        N[idx_sa]++;
+        double alpha_sa = 1.0 / pow((double)N[idx_sa], 0.6);
+        double *Qsa = &Q[idx_sa];
+        *Qsa = *Qsa + alpha_sa * (r + p->gamma * maxQsp - *Qsa);
+        G += r;
+        *s = sp;
+        // Aggiorna epsilon
+        //eps = fmax(eps_end, eps * eps_decay);
+        eps = fmax(eps_end, (double)c/(c+t)); // decay più lento
+        last_avg_return = 0.9*last_avg_return + 0.1*(double)G;        // Semplice media mobile del ritorno per log/diagnostica
+
+        int index = 0, tmp = -1;
+
+        if ((t) % 100 == 0 && multiSim==0) {
+            printf("[QL][train] ep=%d/%d  eps=%.3f  return=%d  avg=%.2f\n", t + 1, steps, eps, G, last_avg_return);
+            if(fout) fprintf(fout, "%d %d %d %d\n", t, s->n1, s->n2, G);
+        }
+        else if(t%(steps/100)==0){                                               // salva uno snapshot ogni 1% del totale dei passi
+            int base = (h>=0) ? (100*h) : 0;
+            /* Protezione: non scrivere più di 100 snapshot per fascia oraria */
+            if(ctr < 100) {
+                index = base+ctr;
+                if(index == tmp) printf("Indice %d duplicato!\n", tmp);
+                snapshotAutoN1[index]+= s->n1;                                   // salva il numero totale di auto in questo snapshot
+                snapshotAutoN2[index]+= s->n2;                                   // salva il numero totale di auto in questo snapshot
+                snaphotReward[index]+=G;                                          // salva il reward cumulato in questo snapshot
+                snapshopTime[index]=t + steps * h;                                // salva il tempo (passi) in questo snapshot
+                tmp = index;
+                ctr++;
+            }
+        }
+        old_action = a;
+    }
+    if(G_start != NULL) *G_start = G; // write back cumulative reward
+    if(fout) fclose(fout);
+    return last_avg_return;
 }

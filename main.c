@@ -71,6 +71,14 @@ int main(int argc, char const *argv[])
 
 
     //
+    // Array di supporto per gli snapshot (servono a fare i grafici)
+    //
+    int *N1=(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot numero auto r1
+    int *N2=(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot numero auto r2
+    int *R =(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot reward cumulato
+    int *T =(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot tempo
+
+    //
     // Parametri Q-LEARNING
     //
     double alpha      = 0.1;                                                                    // Learning rate
@@ -80,9 +88,20 @@ int main(int argc, char const *argv[])
     // DA TOGLIERE?
     double eps_decay  = 0.995;                                                                  // Decadimento per episodio
 
-
-
-
+    State s0 = s_init;                                                                           // Stato iniziale di simulazione (strade vuote, TL1 verde)
+    int staticPolicy = 3;                                                                        // Policy statica: switch ogni X passi
+    printf("\nStatic simulation in progress...\n");
+    for(int i=0; i<simulations; i++){
+        print_progress((double)i / simulations);
+        unsigned int s=seed+i;                                                                  // Copia il seed per non modificare l'originale - Ogni simulazione deve avere seed diverso
+        int Rmax = static_simulate(&P, s0, staticPolicy, steps, &s, N1, N2, R, T);
+        //printf("[VI] Reward cumulato=%d\n", Rmax);
+    }
+    FILE *foutStatic  = fopen("outputStatic.txt",  "w");
+    for(int j=0;j<100;j++){ 
+        fprintf(foutStatic, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations); 
+    }
+    printf("\n");
 
     /********************************
     ******** Value Iteration ********
@@ -101,19 +120,16 @@ int main(int argc, char const *argv[])
     //fprintf(fout, "Parametri: max_r1=%d, max_r2=%d, add_r1_max=%d, add_r2_max=%d, out_r1_max=%d, out_r2_max=%d, low_th=%d, med_th=%d, gamma=%.2f, steps=%d, seed=%u, simulations=%d, iterations=%d, tot_states=%d\n", P.max_r1, P.max_r2, P.add_r1_max, P.add_r2_max, P.out_r1_max, P.out_r2_max, P.low_th, P.med_th, P.gamma, steps, seed, simulations, it, S);
  
 
-    //
-    // Array di supporto per gli snapshot (servono a fare i grafici)
-    //
-    int *N1=(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot numero auto r1
-    int *N2=(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot numero auto r2
-    int *R =(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot reward cumulato
-    int *T =(int*)calloc(hours * 100, sizeof(int));                                             // array per snapshot tempo
+    memset(N1, 0, hours * 100 * sizeof(int));
+    memset(N2, 0, hours * 100 * sizeof(int));
+    memset(R,  0, hours * 100 * sizeof(int));
+    memset(T,  0, hours * 100 * sizeof(int));
 
     
     //
     // Simulazione del sistema data la policy ottimale trovata allo step precedente
     //
-    State s0 = s_init;
+    s0 = s_init;
     printf("\nValue Iteration simulation in progress...\n");
     for(int i=0; i<simulations; i++){
         print_progress((double)i / simulations);
@@ -188,7 +204,7 @@ int main(int argc, char const *argv[])
             //printf("[QL] Reward cumulato=%d (avg=%.2f)\n", cumR, avg);
         }
     }
-    printf("\n\n");
+    printf("\n");
 
 
     //
@@ -199,6 +215,53 @@ int main(int argc, char const *argv[])
         fprintf(foutQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations);
     }
 
+
+    //
+    // Re-inizializzazione degli array di supporto per gli snapshot
+    //
+    memset(N1, 0, hours * 100 * sizeof(int));
+    memset(N2, 0, hours * 100 * sizeof(int));
+    memset(R,  0, hours * 100 * sizeof(int));
+    memset(T,  0, hours * 100 * sizeof(int));
+    memset(Q,  0, S * 2 * sizeof(double));
+    memset(N,  0, S * 2 * sizeof(unsigned int));
+
+    printf("\nGenius_Q-Learning in progress...\n");
+
+    //
+    // Per ogni simulazione, il Q-Learning 
+    //
+    for(int i=0; i<simulations; i++){
+        print_progress(i / simulations);
+
+        //
+        // Se non ci sono fasce orarie, re-inizializza lo stato iniziale e la Q-Table ad ogni simulazione.
+        // Se invece ci sono, l'idea è simulare diversi giorni di fila, non lo stesso giorno ripetuto da zero.
+        //
+        if(hours==1){
+            s0 = s_init;
+            memset(Q, 0, S * 2 * sizeof(double));
+        }
+        print_progress((double) i / simulations);
+
+        unsigned int s=seed+1000+i;
+        int cumR = 0;                                                                           // Cumulative reward across hours for a single simulation
+        for(int j=1; j<=hours; j++){
+            adjust_params_for_hour(Input_Parameters, &P, hours, j);                                               // Aggiorna i parametri per la fascia oraria (se necessario)
+            double avg = geniusDrivers_q_learning(&P, &s0, 1, steps, s, alpha, eps_start, eps_end, eps_decay, Q, N, N1, N2, R, T, &cumR, j-1);
+            //printf("[QL] Reward cumulato=%d (avg=%.2f)\n", cumR, avg);
+        }
+    }
+    printf("\n\n");
+
+
+    //
+    // Stampa gli andamenti di n1, n2 ed R in funzione del tempo
+    //
+    FILE *foutGeniusQL  = fopen("outputGeniusQL.txt",  "w");
+    for(int j=0;j<hours*100;j++){ 
+        fprintf(foutGeniusQL, "%d, %.1f, %.1f, %.1f \n", T[j], (double)N1[j]/simulations, (double)N2[j]/simulations, (double)R[j]/simulations);
+    }
 
 
 
@@ -211,7 +274,7 @@ int main(int argc, char const *argv[])
     free(N1); free(N2);
     free(R ); free(T);
     free(N );
-    fclose(foutVI); fclose(foutQL);
+    fclose(foutVI); fclose(foutQL);fclose(foutStatic);fclose(foutGeniusQL);
     
     return 0;
 }

@@ -60,3 +60,11 @@ int mdp_simulate(const MDPParams *p, State s0, const unsigned char *policy, int 
 
 // Modifica i parametri MDP in base alla fascia oraria corrente (hours totale, j fascia corrente)
 void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int j);
+
+int static_simulate(const MDPParams *p, State s, int staticPolicy, int steps, unsigned int *rng_state, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime);
+
+static inline int genius_mdp_env_step(const MDPParams *p, State s, int action, unsigned int *rng_state, State *sp_out, int *r_out, int block);
+
+int geniusDriversBlock(int a, int consecutive, int blocked, const MDPParams *params, int blockedSteps);
+
+double geniusDrivers_q_learning(const MDPParams *p, State *s, int multiSim, int steps, unsigned int seed, double alpha, double eps_start, double eps_end, double eps_decay, double *Q, unsigned int *N, int *snapshotAutoN1, int *snapshotAutoN2, int *snaphotReward, int *snapshopTime, int *G_start, int h);
