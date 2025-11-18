@@ -16,9 +16,9 @@ RUN         :   Da lina di comando possono essere passati i seguenti parametri, 
                     
                     - low_th, med_th (interi positivi, il secondo maggiore stretto del primo) - Le due threshold che definiscono le zone di basso, medio e alto traffico.
                     
-                    - seed (intero) - Riproducibilità della simulazione.
+                    - seed (intero) - Riproducibilità della simulazione. Tutte le simulazioni che compaiono nel report usano seed=12312.
                     
-                    - simulations (intero positivo) - Numero di simulazioni ripetute per ridurre il rumore nei grafici.
+                    - simulations (intero positivo) - Numero di simulazioni ripetute per ridurre il rumore nei grafici. Valore tipicamente usato: 10000.
                     
                     - steps (intero positivo) - Numero di step della simulazione.
 

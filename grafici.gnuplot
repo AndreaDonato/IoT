@@ -1,5 +1,5 @@
 
-GRAPH_NAME = "CriticalThroughput"
+GRAPH_NAME = "Compensation"
 
 
 set terminal postscript eps enhanced color font "Helvetica,12" 
