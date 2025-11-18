@@ -31,3 +31,8 @@ OUTPUT      :   Un'esecuzione del programma produce file outputXX.txt della form
                     - GeniusQL per il Q-Learning nel caso di conducenti indisciplinati.
 
                 A partire da tali file si possono ricavare i grafici.
+
+
+GRAFICI     :   I grafici possono essere prodotti semplicemente eseguendo genera_grafici.sh.
+                L'unico parametro modificabile (GRAPH_NAME) si trova in testa al file grafici.gnuplot, ed è il prefisso usato per distinguere lo scenario.
+                Ad esempio, i grafici relativi ai parametri proposti nel pdf originale hanno come prefisso "Default".

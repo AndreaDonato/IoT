@@ -56,7 +56,7 @@ int main(int argc, char const *argv[])
     //
     if(argc>=2) { hours = atoi(argv[1]); }                                                      // Parametro che decide il numero di fasce orarie
     if(hours<1 || hours == 5 || hours>6){ printf("\nNumeri di fasce orarie consentiti:\n\n\t1 - Nessuna fascia oraria;\n\t 2,3,4,6 - Fasce orarie da {12, 8, 6, 4} ore).\n\n"); return 1; }
-    int steps = 9000/hours;                                                                     // Numero di passi di simulazione (ha sempre 9000 steps, eventualmente divisi in fasce orarie)
+    int steps = 18000/hours;                                                                     // Numero di passi di simulazione (ha sempre 9000 steps, eventualmente divisi in fasce orarie)
     
     // Eventuale override da linea di comando dei parametri di default...
     if(argc>=4) { P.max_r1 = atoi(argv[2]); P.max_r2 = atoi(argv[3]); }         
