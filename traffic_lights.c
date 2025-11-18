@@ -444,6 +444,11 @@ void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int 
 
 
 
+
+//
+// Le fuzioni che seguono implementano una variante del Q-learning in cui le macchine possono bloccarsi in mezzo all'incrocio
+// Per farlo viene ridefinita la funzione di reward e la funzione di step dell'ambiente
+//
 int genius_reward(const MDPParams *p, State sp, int block){
     int N = sp.n1 + sp.n2;
     int reward = 0;
@@ -569,7 +574,6 @@ double geniusDrivers_q_learning(const MDPParams *p, State *s, int multiSim, int 
         G += r;
         *s = sp;
         // Aggiorna epsilon
-        //eps = fmax(eps_end, eps * eps_decay);
         eps = fmax(eps_end, (double)c/(c+t)); // decay più lento
         last_avg_return = 0.9*last_avg_return + 0.1*(double)G;        // Semplice media mobile del ritorno per log/diagnostica
 
