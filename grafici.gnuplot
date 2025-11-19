@@ -1,8 +1,10 @@
 
-GRAPH_NAME = "Compensation"
+GRAPH_NAME = "FasceOrarie"
 
 
 set terminal postscript eps enhanced color font "Helvetica,12" 
+set key top left
+
 
 # Output: file .eps
 set output GRAPH_NAME."_ConfrontoN_DiversiMetodi.eps"
@@ -11,7 +13,6 @@ set title "Confronto N Diversi Metodi"
 set xlabel "step"
 set ylabel "n"
 set key box
-set key bottom right
 
 plot  "outputStatic.txt" using 1:($2+$3) with lines linewidth 2 title "Static N", \
       "outputVI.txt" using 1:($2+$3) with lines linewidth 2 title "VI N", \

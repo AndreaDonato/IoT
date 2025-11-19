@@ -1,6 +1,6 @@
 
-COMPILAZIONE:   gcc main.c traffic_lights.c -o smart_traffic.exe    (Windows)
-                gcc main.c traffic_lights.c -o smart_traffic.x      (Linux)
+COMPILAZIONE:   gcc main.c traffic_lights.c -o smart_traffic.exe -lm   (Windows)
+                gcc main.c traffic_lights.c -o smart_traffic.x -lm     (Linux)
 
 
 RUN         :   Da lina di comando possono essere passati i seguenti parametri, nella forma NOME(VALORI AMMESSI), in quest'ordine:
