@@ -1,9 +1,9 @@
 
-GRAPH_NAME = "FasceOrarie"
+GRAPH_NAME = "Underload_RewardAppendix"
 
 
 set terminal postscript eps enhanced color font "Helvetica,12" 
-set key top left
+set key top right
 
 
 # Output: file .eps
@@ -61,3 +61,12 @@ plot  "outputQL.txt" using 1:($2+$3) with lines title "QL N", "outputQL.txt" usi
       "outputGeniusQL.txt" using 1:($2+$3) with lines title "GQL N", "outputGeniusQL.txt" using 1:2 with lines title "GQL n1", "outputGeniusQL.txt" using 1:3 with lines title "GQL n2"
 
 unset output
+
+
+
+## Reward QL GQL
+set output GRAPH_NAME."_Reward_QL_GQL.eps"
+set title "Reward QL GQL"
+set xlabel "step"
+set ylabel "R"
+plot "outputQL.txt" using 1:4 with lines title "Reward QL", "outputGeniusQL.txt" using 1:4 with lines title "Reward GQL"

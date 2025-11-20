@@ -411,30 +411,30 @@ double mdp_q_learning(const MDPParams *p, State *s, int multiSim, int steps, uns
 // j: indice della fascia corrente (1-based)
 // La funzione modifica in-place i campi rilevanti di P (arrivi) per simulare variazioni orarie.
 void adjust_params_for_hour(const MDPParams Input, MDPParams *P, int hours, int j){
-    if(hours <= 1) return;                                                                                              // Ignora le modifiche se non ci sono fasce multiple
+    if(hours <= 1) return;  // Ignora le modifiche se non ci sono fasce multiple
     switch(hours){
-        case 2:                                                                             
-            if     (j==1){ P->add_r1_max = floor(Input.add_r1_max*1.2) ; P->add_r2_max = floor(Input.add_r2_max*1.2) ; } // Giorno (+20% traffico rispetto al valore impostato)
-            else         { P->add_r1_max = ceil (Input.add_r1_max*0.8) ; P->add_r2_max = ceil (Input.add_r2_max*0.8) ; } // Notte (-20%)
+        case 2:    // Caso base, salto netto e simmetrico                                                                       
+            if     (j==1){ P->add_r1_max = floor(Input.add_r1_max*1.2) ; P->add_r2_max = floor(Input.add_r2_max*1.2) ; } // Giorno (+20%)       Traffico rispetto al valore base
+            else         { P->add_r1_max = ceil (Input.add_r1_max*0.8) ; P->add_r2_max = ceil (Input.add_r2_max*0.8) ; } // Notte  (-20%)
             break;
-        case 3:                                                                             
-            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.8) ; P->add_r2_max = ceil (Input.add_r2_max*0.8) ; } // 22-06 (-20%)
-            else if(j==2){ P->add_r1_max = floor(Input.add_r1_max    ) ; P->add_r2_max = floor(Input.add_r2_max    ) ; } // 06-14 (+0%)
-            else         { P->add_r1_max = floor(Input.add_r1_max*1.2) ; P->add_r2_max = floor(Input.add_r2_max*1.2) ; } // 14-22 (+20%)
+        case 3:    // Le code invertono progressivamente il livello di congestione                                                                        
+            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.8) ; P->add_r2_max = floor(Input.add_r2_max*1.2) ; } // 22-06 (-20% | +20%) Rispettivamente per r1 ed r2
+            else if(j==2){ P->add_r1_max = floor(Input.add_r1_max    ) ; P->add_r2_max = floor(Input.add_r2_max    ) ; } // 06-14 (+ 0% | + 0%)
+            else         { P->add_r1_max = floor(Input.add_r1_max*1.2) ; P->add_r2_max = ceil (Input.add_r2_max*0.8) ; } // 14-22 (+20% | -20%)
             break;
-         case 4:                                                                            
-            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.8) ; P->add_r2_max = ceil (Input.add_r2_max*0.8) ; } // 22-04 (-20%)
+         case 4:    // Le code variano in modo più graduale                                                                        
+            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.9) ; P->add_r2_max = ceil (Input.add_r2_max*0.9) ; } // 22-04 (-10%)
             else if(j==2){ P->add_r1_max = floor(Input.add_r1_max    ) ; P->add_r2_max = floor(Input.add_r2_max    ) ; } // 04-10 (+ 0%)
-            else if(j==3){ P->add_r1_max = floor(Input.add_r1_max*1.2) ; P->add_r2_max = floor(Input.add_r2_max*1.2) ; } // 10-16 (+20%)
-            else         { P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r2_max*1.4) ; } // 16-22 (+40%)
+            else if(j==3){ P->add_r1_max = floor(Input.add_r1_max*1.1) ; P->add_r2_max = floor(Input.add_r2_max*1.1) ; } // 10-16 (+10%)
+            else         { P->add_r1_max = floor(Input.add_r1_max*1.2) ; P->add_r2_max = floor(Input.add_r2_max*1.2) ; } // 16-22 (+20%)
             break;
-        case 6:                                                                             
-            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.6) ; P->add_r2_max = ceil (Input.add_r2_max*0.6) ; } // 22-02 (-40%)
-            else if(j==2){ P->add_r1_max = ceil (Input.add_r1_max*0.9) ; P->add_r2_max = ceil (Input.add_r2_max*0.9) ; } // 02-06 (-10%)
-            else if(j==3){ P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r2_max*1.4) ; } // 06-10 (+40%) 
-            else if(j==4){ P->add_r1_max = floor(Input.add_r1_max    ) ; P->add_r2_max = floor(Input.add_r2_max    ) ; } // 10-14 (+ 0%)
-            else if(j==5){ P->add_r1_max = floor(Input.add_r1_max*1.4) ; P->add_r2_max = floor(Input.add_r2_max*1.4) ; } // 14-18 (+30%)
-            else         { P->add_r1_max = floor(Input.add_r1_max    ) ; P->add_r2_max = floor(Input.add_r2_max    ) ; } // 18-22 (+ 0%)
+        case 6:     // Mix delle precedenti                                                                        
+            if     (j==1){ P->add_r1_max = ceil (Input.add_r1_max*0.7) ; P->add_r2_max = ceil (Input.add_r2_max*0.8) ; } // 22-02 (-30% | -20%)
+            else if(j==2){ P->add_r1_max = ceil (Input.add_r1_max*0.8) ; P->add_r2_max = ceil (Input.add_r2_max*0.9) ; } // 02-06 (-20% | -10%)
+            else if(j==3){ P->add_r1_max = floor(Input.add_r1_max*1.1) ; P->add_r2_max = floor(Input.add_r2_max*1.0) ; } // 06-10 (+10% | + 0%) 
+            else if(j==4){ P->add_r1_max = floor(Input.add_r1_max*1.2) ; P->add_r2_max = ceil (Input.add_r2_max*0.9) ; } // 10-14 (+20% | -10%)
+            else if(j==5){ P->add_r1_max = ceil (Input.add_r1_max*0.9) ; P->add_r2_max = floor(Input.add_r2_max*1.3) ; } // 14-18 (-10% | +30%)
+            else         { P->add_r1_max = ceil (Input.add_r1_max*0.7) ; P->add_r2_max = floor(Input.add_r2_max*1.1) ; } // 18-22 (-30% | +10%)
             break;
         default:
             printf("adjust_params_for_hour: unsupported number of hours (allowed values: 1, 2, 3, 4, 6): %d\n", hours);
